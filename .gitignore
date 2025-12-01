@@ -31,3 +31,19 @@ pip-delete-this-directory.txt
 
 # yoav:
 otherGit/*
+
+# trained models
+models/
+*_pretrained/
+
+#VSCode
+.vscode/
+.history/
+*.code-workspace
+
+#environments
+.env
+.venv
+env/
+venv/
+ENV/

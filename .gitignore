@@ -47,3 +47,12 @@ models/
 env/
 venv/
 ENV/
+
+# png files
+*.png
+
+#json files
+*.json
+
+#txt files
+*.txt

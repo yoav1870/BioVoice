@@ -34,3 +34,8 @@ tqdm==4.66.1
 huggingface_hub==0.14.1
 transformers==4.30.2
 tokenizers==0.13.3
+
+# ==========
+# INTERPRETABILITY
+# ==========
+captum==0.7.0

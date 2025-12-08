@@ -39,3 +39,5 @@ tokenizers==0.13.3
 # INTERPRETABILITY
 # ==========
 captum==0.7.0
+grad-cam==1.5.5
+

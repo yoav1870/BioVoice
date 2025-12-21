@@ -337,7 +337,7 @@ def TEST_generate_concept_patch():
     
     plt.show()
 
-def CREATE_ALL_CONCEPT_DIRS():
+def CREATE_ALL_CONCEPT_DIRS(out_dir: Path):
     random_seed = 42
     samples_count = 60
     
@@ -346,7 +346,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="long",
         tone="rising",
         rate="steep",
@@ -362,7 +362,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="long",
         tone="rising",
         rate="steep",
@@ -379,7 +379,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####  
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="long",
         tone="rising",
         rate="flat",
@@ -395,7 +395,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="short",
         tone="rising",
         rate="steep",
@@ -411,7 +411,7 @@ def CREATE_ALL_CONCEPT_DIRS():
 
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="short",
         tone="rising",
         rate="steep",
@@ -429,7 +429,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="long",
         tone="constant",
         rate="ignored",
@@ -445,7 +445,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="short",
         tone="constant",
         rate="ignored",
@@ -463,7 +463,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="long",
         tone="dropping",
         rate="steep",
@@ -479,7 +479,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="long",
         tone="dropping",
         rate="steep",
@@ -497,7 +497,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="long",
         tone="dropping",
         rate="flat",
@@ -513,7 +513,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="short",
         tone="dropping",
         rate="steep",
@@ -529,7 +529,7 @@ def CREATE_ALL_CONCEPT_DIRS():
     
     ##### VV #####
     create_concept_dir(
-        base_dir=Path("positive concepts dataset"),
+        base_dir=out_dir,
         length="short",
         tone="dropping",
         rate="steep",

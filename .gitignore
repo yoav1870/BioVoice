@@ -12,7 +12,10 @@
 *.vcf
 *.xml
 data/
-
+*.pt
+*.pkl
+*.html
+*.wav
 ### Python ###
 __pycache__/
 *.py[cod]

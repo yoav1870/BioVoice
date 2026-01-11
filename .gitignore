@@ -47,6 +47,7 @@ models/
 #environments
 .env
 .venv
+.venvResnet
 env/
 venv/
 ENV/
@@ -59,3 +60,7 @@ ENV/
 
 #txt files
 *.txt
+
+### Speech ###
+*.npz
+wespeaker-voxceleb-resnet293-LM

@@ -48,6 +48,7 @@ models/
 .env
 .venv
 .venvResnet
+.concept_venv
 env/
 venv/
 ENV/

@@ -46,7 +46,7 @@ models/
 
 #environments
 .env
-.venv
+.venv*
 .venvResnet
 .concept_venv
 env/

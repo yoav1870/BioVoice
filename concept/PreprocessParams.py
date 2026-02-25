@@ -1,6 +1,6 @@
 from enum import Enum
 
-FREQUENCY_BIN_COUNT = 80  # 72 for redimnet
+FREQUENCY_BIN_COUNT = 72  # 72 for redimnet
 SAMPLE_RATE = 16000
 
 N_FFT = 512

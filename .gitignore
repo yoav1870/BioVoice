@@ -53,6 +53,14 @@ env/
 venv/
 ENV/
 
+
+#zip files
+*.zip
+*.tar.gz
+*.tar
+*.tar.bz2
+*.tar.xz
+
 # png files
 *.png
 

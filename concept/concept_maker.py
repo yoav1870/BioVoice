@@ -1,12 +1,12 @@
 from __future__ import annotations
 from matplotlib.ticker import FuncFormatter, AutoMinorLocator
-from matplotlib.colors import PowerNorm
+from matplotlib.colors import Normalize
 
 
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional, Tuple, List
+from typing import Optional, Tuple, List
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,13 +17,6 @@ try:
 except Exception:
     W = None
     display = None
-
-
-def postprocess_like_redimnet(S_energy: np.ndarray, eps: float = 1e-6) -> np.ndarray:
-    S = np.maximum(S_energy, 0.0)
-    S = np.log(S + eps)
-    S = S - S.mean(axis=1, keepdims=True)
-    return S.astype(np.float32)
 
 
 def _frames_from_seconds(seconds: float, hop_length: int, sample_rate: int) -> int:
@@ -38,13 +31,12 @@ def _clip_int(v: int, lo: int, hi: int) -> int:
 @dataclass
 class SaveAugment:
     n_samples: int = 60
-    noise_std: float = 0.02  # energy space
-    max_time_shift: int = 6  # frames
-    max_freq_shift: int = 2  # mel bins
     seed: Optional[int] = 42
-    systematic_cover: bool = False  # if True -> no randomness, paste patch across grid
     cover_thr: float = 1e-6  # pixels <= thr considered empty
-    amp_levels: int = 1
+    cover_rows: int = 3
+    cover_cols: int = 3
+    amp_jitter: float = 0.15
+    thickness_jitter: float = 0.08
 
 
 class ConceptMaker:
@@ -57,9 +49,9 @@ class ConceptMaker:
         hop_length: Optional[int] = None,
         sample_rate: Optional[int] = None,
         out_dir: Path,
-        postprocess_fn: Callable[[np.ndarray], np.ndarray] = postprocess_like_redimnet,
         cmap: str = "inferno",
         db_max: float = 12.0,
+        save_raw_energy: bool = False,
     ):
         self.mel_bins = int(mel_bins)
         self.frames = int(frames)
@@ -69,8 +61,8 @@ class ConceptMaker:
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.db_max = float(db_max)
+        self.save_raw_energy = bool(save_raw_energy)
 
-        self.postprocess_fn = postprocess_fn
         self.cmap = cmap
 
         self.S = np.zeros((self.mel_bins, self.frames), dtype=np.float32)
@@ -89,15 +81,16 @@ class ConceptMaker:
         self._w_grid = None
         self._w_name = None
         self._w_save_n = None
-        self._w_noise = None
-        self._w_tshift = None
-        self._w_fshift = None
         self._w_seed = None
-        self._w_systematic = None
-        self._w_levels = None
+        self._w_amp_jitter = None
+        self._w_thickness_jitter = None
         self._w_feather = None
         self._w_tool = None
+        self._w_blend = None
         self._tool_points: List[Tuple[int, int]] = []  # list of (y,x) clicks
+
+        self._raw_norm = None
+        self._cbar = None
 
     def _push_undo(self) -> None:
         self._undo.append(self.S.copy())
@@ -136,7 +129,11 @@ class ConceptMaker:
             patch *= 1.0 - w
         else:
             target = np.float32(value) * w
-            patch[:] = np.maximum(patch, target)
+            blend = self._w_blend.value if self._w_blend is not None else "max"
+            if blend == "add":
+                patch[:] = patch + target
+            else:
+                patch[:] = np.maximum(patch, target)
 
         self.S[y0 : y1 + 1, x0 : x1 + 1] = np.clip(patch, 0.0, 1.0).astype(np.float32)
 
@@ -196,7 +193,12 @@ class ConceptMaker:
     def _redraw(self) -> None:
         if self._im is None:
             return
+        if self._raw_norm is not None:
+            self._im.set_norm(self._raw_norm)
         self._im.set_data(self.S * self.db_max)
+        if self._cbar is not None:
+            self._cbar.set_label(f"dB (0..{self.db_max:g})")
+            self._cbar.update_normal(self._im)
         self._fig.canvas.draw_idle()
 
     def _on_press(self, event) -> None:
@@ -276,32 +278,7 @@ class ConceptMaker:
         self._fig.canvas.draw_idle()
 
     def _augment_samples(self, base: np.ndarray, aug: SaveAugment) -> List[np.ndarray]:
-        if aug.systematic_cover:
-            return self._systematic_cover_samples(base, aug)
-
-        rng = np.random.default_rng(aug.seed)
-        out: List[np.ndarray] = []
-
-        for _ in range(int(aug.n_samples)):
-            S = base.copy()
-
-            if aug.noise_std and aug.noise_std > 0:
-                S = S + rng.normal(0.0, aug.noise_std, size=S.shape).astype(np.float32)
-
-            if aug.max_time_shift and aug.max_time_shift > 0:
-                dt = int(rng.integers(-aug.max_time_shift, aug.max_time_shift + 1))
-                if dt != 0:
-                    S = np.roll(S, shift=dt, axis=1)
-
-            if aug.max_freq_shift and aug.max_freq_shift > 0:
-                df = int(rng.integers(-aug.max_freq_shift, aug.max_freq_shift + 1))
-                if df != 0:
-                    S = np.roll(S, shift=df, axis=0)
-
-            S = np.clip(S, 0.0, 1.0).astype(np.float32)
-            out.append(S)
-
-        return out
+        return self._grid_cover_samples(base, aug)
 
     def _extract_nonzero_patch(
         self, base: np.ndarray, thr: float
@@ -314,9 +291,65 @@ class ConceptMaker:
         x0, x1 = int(xs.min()), int(xs.max())
         return base[y0 : y1 + 1, x0 : x1 + 1].copy()
 
-    def _systematic_cover_samples(
-        self, base: np.ndarray, aug: SaveAugment
-    ) -> List[np.ndarray]:
+    def _split_placement_axis(self, max_pos: int, n_cells: int) -> List[Tuple[int, int]]:
+        n = max(1, int(n_cells))
+        total = int(max_pos) + 1
+        out: List[Tuple[int, int]] = []
+        for i in range(n):
+            lo = int(np.floor((i * total) / n))
+            hi = int(np.floor(((i + 1) * total) / n) - 1)
+            lo = _clip_int(lo, 0, max_pos)
+            hi = _clip_int(hi, 0, max_pos)
+            if hi < lo:
+                hi = lo
+            out.append((lo, hi))
+        return out
+
+    def _rescale_patch_centered(self, patch: np.ndarray, scale: float) -> np.ndarray:
+        ph, pw = patch.shape
+        if ph <= 1 or pw <= 1:
+            return patch.astype(np.float32, copy=True)
+
+        s = max(1e-3, float(scale))
+        if abs(s - 1.0) < 1e-6:
+            return patch.astype(np.float32, copy=True)
+
+        cy = 0.5 * (ph - 1)
+        cx = 0.5 * (pw - 1)
+        ys = (np.arange(ph, dtype=np.float32) - cy) / s + cy
+        xs = (np.arange(pw, dtype=np.float32) - cx) / s + cx
+
+        y0 = np.floor(ys).astype(int)
+        x0 = np.floor(xs).astype(int)
+        y1 = y0 + 1
+        x1 = x0 + 1
+
+        wy = (ys - y0).astype(np.float32)[:, None]
+        wx = (xs - x0).astype(np.float32)[None, :]
+
+        y0c = np.clip(y0, 0, ph - 1)
+        y1c = np.clip(y1, 0, ph - 1)
+        x0c = np.clip(x0, 0, pw - 1)
+        x1c = np.clip(x1, 0, pw - 1)
+
+        Ia = patch[np.ix_(y0c, x0c)]
+        Ib = patch[np.ix_(y0c, x1c)]
+        Ic = patch[np.ix_(y1c, x0c)]
+        Id = patch[np.ix_(y1c, x1c)]
+
+        out = (
+            (1.0 - wy) * (1.0 - wx) * Ia
+            + (1.0 - wy) * wx * Ib
+            + wy * (1.0 - wx) * Ic
+            + wy * wx * Id
+        ).astype(np.float32)
+
+        valid_y = (ys >= 0.0) & (ys <= float(ph - 1))
+        valid_x = (xs >= 0.0) & (xs <= float(pw - 1))
+        out *= (valid_y[:, None] & valid_x[None, :]).astype(np.float32)
+        return out
+
+    def _grid_cover_samples(self, base: np.ndarray, aug: SaveAugment) -> List[np.ndarray]:
         patch = self._extract_nonzero_patch(base, aug.cover_thr)
         if patch is None:
             return [base.astype(np.float32)]  # nothing drawn -> just one sample
@@ -329,46 +362,49 @@ class ConceptMaker:
                 base.astype(np.float32)
             ]  # patch bigger than canvas (shouldn't happen)
 
-        # how many distinct placements exist?
-        max_positions = (y_max + 1) * (x_max + 1)
-        target = int(aug.n_samples)
+        rng = np.random.default_rng(aug.seed)
+        target = max(1, int(aug.n_samples))
+        rows = max(1, int(aug.cover_rows))
+        cols = max(1, int(aug.cover_cols))
+        amp_jitter = max(0.0, float(aug.amp_jitter))
+        thickness_jitter = max(0.0, float(aug.thickness_jitter))
 
-        # choose a coarse grid that spreads across full range
-        # (we don't want every pixel position; just enough to reach target)
-        if max_positions <= 0:
-            ys = np.array([0], dtype=int)
-            xs = np.array([0], dtype=int)
-        else:
-            # pick ny,nx so ny*nx >= min(target, max_positions)
-            want = min(target, max_positions)
-            ny = max(1, int(np.floor(np.sqrt(want))))
-            ny = min(ny, y_max + 1)
-            nx = max(1, int(np.ceil(want / ny)))
-            nx = min(nx, x_max + 1)
-            # if we clipped nx too much, adjust ny
-            ny = min(y_max + 1, max(1, int(np.ceil(want / nx))))
+        y_ranges = self._split_placement_axis(y_max, rows)
+        x_ranges = self._split_placement_axis(x_max, cols)
+        cells = [(yr, xr) for yr in y_ranges for xr in x_ranges]
+        n_cells = len(cells)
 
-            ys = np.unique(np.round(np.linspace(0, y_max, num=ny)).astype(int))
-            xs = np.unique(np.round(np.linspace(0, x_max, num=nx)).astype(int))
-
-        # deterministic amplitude scaling levels (helps when patch is huge and placements are few)
-        L = max(1, int(aug.amp_levels))
-        amps = (
-            np.linspace(0.7, 1.0, num=L, dtype=np.float32)
-            if L > 1
-            else np.array([1.0], dtype=np.float32)
-        )
+        counts = [target // n_cells] * n_cells
+        remainder = target % n_cells
+        if remainder > 0:
+            for idx in rng.permutation(n_cells)[:remainder]:
+                counts[int(idx)] += 1
 
         out: List[np.ndarray] = []
-        for a in amps:
-            p = np.clip(patch * a, 0.0, 1.0).astype(np.float32)
-            for y in ys:
-                for x in xs:
-                    S = np.zeros((self.mel_bins, self.frames), dtype=np.float32)
-                    S[y : y + ph, x : x + pw] = p
-                    out.append(S)
-                    if len(out) >= target:
-                        return out
+        for cell_idx, count in enumerate(counts):
+            if count <= 0:
+                continue
+
+            (y0, y1), (x0, x1) = cells[cell_idx]
+            for _ in range(count):
+                y = int(rng.integers(y0, y1 + 1)) if y1 > y0 else y0
+                x = int(rng.integers(x0, x1 + 1)) if x1 > x0 else x0
+
+                amp_scale = 1.0
+                if amp_jitter > 0.0:
+                    amp_scale += float(rng.uniform(-amp_jitter, amp_jitter))
+                    amp_scale = max(0.0, amp_scale)
+
+                thick_scale = 1.0
+                if thickness_jitter > 0.0:
+                    thick_scale += float(rng.uniform(-thickness_jitter, thickness_jitter))
+
+                p = self._rescale_patch_centered(patch, thick_scale)
+                p = np.clip(p * amp_scale, 0.0, 1.0).astype(np.float32)
+
+                S = np.zeros((self.mel_bins, self.frames), dtype=np.float32)
+                S[y : y + ph, x : x + pw] = p
+                out.append(S)
 
         return out
 
@@ -384,7 +420,7 @@ class ConceptMaker:
             cmap=self.cmap,
         )
         fig.colorbar(im, ax=ax, fraction=0.025)
-        ax.set_title("Manual Concept (energy 0..1)")
+        ax.set_title(f"Manual Concept (0..{self.db_max:g} dB)")
         ax.set_xlabel("frames")
         ax.set_ylabel("mel bins")
         fig.tight_layout()
@@ -399,24 +435,25 @@ class ConceptMaker:
         concept_dir = self.out_dir / name
         concept_dir.mkdir(parents=True, exist_ok=True)
 
-        np.save(concept_dir / "raw_energy.npy", self.S.astype(np.float32))
+        save_raw = bool(self.save_raw_energy)
+        if save_raw:
+            np.save(concept_dir / "raw_energy.npy", self.S.astype(np.float32))
 
         self._save_preview_png(concept_dir / "preview.png")
 
         aug = SaveAugment(
             n_samples=int(self._w_save_n.value),
-            noise_std=float(self._w_noise.value),
-            max_time_shift=int(self._w_tshift.value),
-            max_freq_shift=int(self._w_fshift.value),
             seed=int(self._w_seed.value) if self._w_seed.value is not None else None,
-            systematic_cover=bool(self._w_systematic.value),
-            amp_levels=int(self._w_levels.value),
+            cover_rows=3,
+            cover_cols=3,
+            amp_jitter=float(self._w_amp_jitter.value),
+            thickness_jitter=float(self._w_thickness_jitter.value),
         )
 
         samples_energy = self._augment_samples(self.S, aug)
         for i, S_energy in enumerate(samples_energy, start=1):
-            S_proc = self.postprocess_fn(S_energy)
-            np.save(concept_dir / f"{i:06d}.npy", S_proc.astype(np.float32))
+            S_db = (S_energy * self.db_max).astype(np.float32)
+            np.save(concept_dir / f"{i:06d}.npy", S_db)
 
         meta = {
             "name": name,
@@ -425,25 +462,26 @@ class ConceptMaker:
             "seconds": self.seconds,
             "hop_length": self.hop_length,
             "sample_rate": self.sample_rate,
-            "postprocess": getattr(self.postprocess_fn, "__name__", "custom"),
+            "save_raw_energy": save_raw,
+            "saved_scale": f"0..{self.db_max:g} dB",
             "augment": {
                 "n_samples": aug.n_samples,
-                "noise_std": aug.noise_std,
-                "max_time_shift": aug.max_time_shift,
-                "max_freq_shift": aug.max_freq_shift,
                 "seed": aug.seed,
-                "systematic_cover": aug.systematic_cover,
-                "amp_levels": aug.amp_levels,
                 "cover_thr": aug.cover_thr,
+                "cover_rows": aug.cover_rows,
+                "cover_cols": aug.cover_cols,
+                "amp_jitter": aug.amp_jitter,
+                "thickness_jitter": aug.thickness_jitter,
             },
         }
         (concept_dir / "meta.json").write_text(json.dumps(meta, indent=2))
 
         print(f"Saved concept to: {concept_dir}")
-        print(f" - raw_energy.npy")
+        if save_raw:
+            print(f" - raw_energy.npy")
         print(f" - preview.png")
         print(f" - meta.json")
-        print(f" - {aug.n_samples} x processed npy files")
+        print(f" - {aug.n_samples} x saved npy files (dB)")
 
     def launch(self) -> None:
         if W is None or display is None:
@@ -474,23 +512,21 @@ class ConceptMaker:
             value="brush",
             description="tool",
         )
+        self._w_blend = W.Dropdown(
+            options=[("Max (crisp)", "max"), ("Add (layer)", "add")],
+            value="max",
+            description="blend",
+        )
         self._w_name = W.Text(
             value="", description="name", placeholder="e.g. long_rising_thin_manual"
         )
         self._w_save_n = W.IntSlider(value=60, min=1, max=300, step=1, description="n")
-        self._w_noise = W.FloatSlider(
-            value=0.02, min=0.0, max=0.2, step=0.005, description="noise"
-        )
-        self._w_tshift = W.IntSlider(
-            value=6, min=0, max=40, step=1, description="tshift"
-        )
-        self._w_fshift = W.IntSlider(
-            value=2, min=0, max=12, step=1, description="fshift"
-        )
         self._w_seed = W.IntText(value=42, description="seed")
-        self._w_systematic = W.Checkbox(value=True, description="cover (deterministic)")
-        self._w_levels = W.IntSlider(
-            value=1, min=1, max=10, step=1, description="levels"
+        self._w_amp_jitter = W.FloatSlider(
+            value=0.15, min=0.0, max=0.5, step=0.01, description="amp jit"
+        )
+        self._w_thickness_jitter = W.FloatSlider(
+            value=0.08, min=0.0, max=0.25, step=0.01, description="thick jit"
         )
         self._w_feather = W.FloatSlider(
             value=1.5, min=0.2, max=8.0, step=0.1, description="feather"
@@ -512,6 +548,7 @@ class ConceptMaker:
                 self._w_intensity,
                 self._w_brush,
                 self._w_feather,
+                self._w_blend,
                 self._w_erase,
                 self._w_grid,
             ]
@@ -520,29 +557,27 @@ class ConceptMaker:
         controls_save = W.VBox(
             [
                 W.HBox([self._w_name, btn_save]),
-                W.HBox([self._w_save_n, self._w_noise]),
-                W.HBox([self._w_tshift, self._w_fshift, self._w_seed]),
-                W.HBox([self._w_systematic, self._w_levels]),
+                W.HBox([self._w_save_n, self._w_seed]),
+                W.HBox([self._w_amp_jitter, self._w_thickness_jitter]),
             ]
         )
 
         display(controls_top, controls_mid, controls_save)
 
         self._fig, self._ax = plt.subplots(figsize=(12, 3.5))
-        gamma = 3.0  # or a widget if you have one
-        norm = PowerNorm(gamma=gamma, vmin=0.0, vmax=self.db_max)
+        self._raw_norm = Normalize(vmin=0.0, vmax=self.db_max)
 
         self._im = self._ax.imshow(
             self.S * self.db_max,
             origin="lower",
             aspect="auto",
             cmap=self.cmap,
-            norm=norm,
+            norm=self._raw_norm,
             interpolation="nearest",
         )
-        cbar = self._fig.colorbar(self._im, ax=self._ax, fraction=0.025)
-        cbar.set_label("dB (0..12)")
-        self._ax.set_title("ConceptMaker (paint energy 0..1)")
+        self._cbar = self._fig.colorbar(self._im, ax=self._ax, fraction=0.025)
+        self._cbar.set_label(f"dB (0..{self.db_max:g})")
+        self._ax.set_title(f"ConceptMaker (paint 0..{self.db_max:g} dB)")
         self._ax.set_xlabel("time frames")
         self._ax.set_ylabel("mel bins")
 
@@ -571,7 +606,7 @@ def launch_concept_maker(
     seconds: Optional[float] = None,
     hop_length: Optional[int] = None,
     sample_rate: Optional[int] = None,
-    postprocess_fn: Callable[[np.ndarray], np.ndarray] = postprocess_like_redimnet,
+    save_raw_energy: bool = False,
 ) -> ConceptMaker:
     if frames is None:
         if seconds is None or hop_length is None or sample_rate is None:
@@ -587,7 +622,51 @@ def launch_concept_maker(
         hop_length=hop_length,
         sample_rate=sample_rate,
         out_dir=out_dir,
-        postprocess_fn=postprocess_fn,
+        save_raw_energy=save_raw_energy,
     )
     cm.launch()
     return cm
+
+
+def _load_preprocess_params():
+    try:
+        from PreprocessParams import (
+            FREQUENCY_BIN_COUNT,
+            TARGET_FRAMES_PAD,
+            SAMPLE_RATE,
+            HOP_LENGTH,
+            MAX_SPECTOGRAM_DURATION_IN_SECONDS,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "PreprocessParams is not importable. Run from the concept/ folder "
+            "or add it to sys.path."
+        ) from exc
+
+    return {
+        "mel_bins": int(FREQUENCY_BIN_COUNT),
+        "frames": int(TARGET_FRAMES_PAD),
+        "sample_rate": int(SAMPLE_RATE),
+        "hop_length": int(HOP_LENGTH),
+        "seconds": float(MAX_SPECTOGRAM_DURATION_IN_SECONDS),
+    }
+
+
+def launch_concept_maker_like_concepts_creation(
+    *,
+    out_dir: Path,
+    save_raw_energy: bool = False,
+) -> ConceptMaker:
+    """
+    Launch ConceptMaker with the same mel/frames settings used in concepts_creation.py.
+    """
+    params = _load_preprocess_params()
+    return launch_concept_maker(
+        mel_bins=params["mel_bins"],
+        frames=params["frames"],
+        seconds=params["seconds"],
+        hop_length=params["hop_length"],
+        sample_rate=params["sample_rate"],
+        out_dir=out_dir,
+        save_raw_energy=save_raw_energy,
+    )

@@ -29,10 +29,11 @@ class SpoofLogRegHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_std = (x - self.mean) / torch.clamp(self.scale, min=1e-12)
-        spoof_logit = x_std @ self.coef.transpose(0, 1) + self.intercept
-        spoof_logit = spoof_logit.squeeze(1)
-        zero_logit = torch.zeros_like(spoof_logit)
-        return torch.stack([zero_logit, spoof_logit], dim=1)
+        score = x_std @ self.coef.transpose(0, 1) + self.intercept
+        score = score.squeeze(1)
+        bonafide_logit = -score
+        spoof_logit = score
+        return torch.stack([bonafide_logit, spoof_logit], dim=1)
 
 
 class ReDimNetMelLogitsWrapper(nn.Module):

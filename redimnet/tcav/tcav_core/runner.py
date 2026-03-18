@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
@@ -33,7 +33,7 @@ class TCAVRunner:
         (
             redim_model,
             wrapped_model,
-            speaker_to_id,
+            label_to_id,
             frame_normalizer,
             n_mels,
             target_frames,
@@ -88,7 +88,7 @@ class TCAVRunner:
         rows_df = score_dataset(
             dataset_csv=paths["dataset_csv"],
             config=self.config,
-            speaker_to_id=speaker_to_id,
+            speaker_to_id=label_to_id,
             redim_model=redim_model,
             wrapped_model=wrapped_model,
             frame_normalizer=frame_normalizer,
@@ -110,7 +110,10 @@ class TCAVRunner:
                 "dataset_csv_path": str(paths["dataset_csv"]),
                 "output_dir": str(paths["output_dir"]),
                 "concept_root": str(paths["concept_root"]),
-                "head_path": str(paths["head_path"]),
+                "head_type": str(self.config.head_type),
+                "head_path": str(paths["head_path"]) if paths["head_path"] else None,
+                "spoof_logreg_path": str(paths["spoof_logreg_path"]) if paths["spoof_logreg_path"] else None,
+                "spoof_scaler_path": str(paths["spoof_scaler_path"]) if paths["spoof_scaler_path"] else None,
                 "random_source_csv_path": str(paths["random_source_csv"]),
                 "n_mels": int(n_mels),
                 "target_frames_effective": int(target_frames),
@@ -119,11 +122,28 @@ class TCAVRunner:
             },
         )
 
-    def _resolve_and_validate_paths(self) -> dict[str, Path]:
+    def _resolve_and_validate_paths(self) -> dict[str, Path | None]:
         dataset_csv = abs_path(self.config.dataset_csv_path)
         output_dir = abs_path(self.config.output_dir)
         concept_root = abs_path(self.config.concept_root)
-        head_path = abs_path(self.config.head_path)
+        head_type = str(self.config.head_type).strip().lower()
+
+        head_path: Path | None = None
+        spoof_logreg_path: Path | None = None
+        spoof_scaler_path: Path | None = None
+        if head_type == "speaker":
+            head_path = abs_path(self.config.head_path)
+        elif head_type == "spoof_logreg":
+            if self.config.spoof_logreg_path is None or self.config.spoof_scaler_path is None:
+                raise RuntimeError(
+                    "spoof_logreg head_type requires spoof_logreg_path and spoof_scaler_path."
+                )
+            spoof_logreg_path = abs_path(self.config.spoof_logreg_path)
+            spoof_scaler_path = abs_path(self.config.spoof_scaler_path)
+        else:
+            raise ValueError(
+                f"Unsupported head_type={self.config.head_type!r}. Expected 'speaker' or 'spoof_logreg'."
+            )
 
         random_source_csv = (
             abs_path(self.config.random_source_csv_path)
@@ -142,8 +162,12 @@ class TCAVRunner:
             raise FileNotFoundError(f"Missing dataset csv: {dataset_csv}")
         if not concept_root.exists():
             raise FileNotFoundError(f"Missing concept root: {concept_root}")
-        if not head_path.exists():
+        if head_path is not None and not head_path.exists():
             raise FileNotFoundError(f"Missing head checkpoint: {head_path}")
+        if spoof_logreg_path is not None and not spoof_logreg_path.exists():
+            raise FileNotFoundError(f"Missing spoof logreg artifact: {spoof_logreg_path}")
+        if spoof_scaler_path is not None and not spoof_scaler_path.exists():
+            raise FileNotFoundError(f"Missing spoof scaler artifact: {spoof_scaler_path}")
         if not random_source_csv.exists():
             raise FileNotFoundError(f"Missing random source csv: {random_source_csv}")
 
@@ -151,6 +175,13 @@ class TCAVRunner:
         print(f"DATASET_CSV_PATH: {dataset_csv}")
         print(f"OUTPUT_DIR: {output_dir}")
         print(f"CONCEPT_ROOT: {concept_root}")
+        print(f"HEAD_TYPE: {self.config.head_type}")
+        if head_path is not None:
+            print(f"HEAD_PATH: {head_path}")
+        if spoof_logreg_path is not None:
+            print(f"SPOOF_LOGREG_PATH: {spoof_logreg_path}")
+        if spoof_scaler_path is not None:
+            print(f"SPOOF_SCALER_PATH: {spoof_scaler_path}")
         print(f"NEGATIVE_MODE: {self.config.negative_mode}")
         print(f"TARGET_MODE: {self.config.target_mode}")
         print(f"TCAV_DEVICE: {self.tcav_device}")
@@ -164,6 +195,8 @@ class TCAVRunner:
             "output_dir": output_dir,
             "concept_root": concept_root,
             "head_path": head_path,
+            "spoof_logreg_path": spoof_logreg_path,
+            "spoof_scaler_path": spoof_scaler_path,
             "random_source_csv": random_source_csv,
         }
 

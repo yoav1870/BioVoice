@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from dataclasses import dataclass
@@ -12,24 +12,34 @@ ROOT_DIR = Path("/home/SpeakerRec/BioVoice")
 class ExperimentConfig:
     dataset_csv_path: Path = (
         ROOT_DIR
-        / "redimnet/grad_cam/2.0/output/speaker_similarity_ranking_vox2_10_20_ids.csv"
+        / "data/datasets/ASVspoof5_tars/smoke_test_a01_a08/tcav_smoke_test_spoof.csv"
     )
     output_dir: Path = ROOT_DIR / "redimnet/tcav/output"
-    output_tag: str = "tcav-v2-quality"
+    output_tag: str = "tcav_asvspoof5_smoke_main_binary_a01_a08"
 
     concept_root: Path = ROOT_DIR / "concept/final_concepts"
     excluded_concept_names: tuple[str, ...] = ("random",)
     min_concept_files_warning: int = 120
 
+    head_type: str = "spoof_logreg"
     head_path: Path = ROOT_DIR / "data/heads/redim_speaker_head_vox2_10_20.pt"
+    spoof_logreg_path: Optional[Path] = (
+        ROOT_DIR
+        / "data/models/asvspoof5_all_data_train_dev_eval_streaming_binary/logistic_regression.pkl"
+    )
+    spoof_scaler_path: Optional[Path] = (
+        ROOT_DIR
+        / "data/models/asvspoof5_all_data_train_dev_eval_streaming_binary/scaler.pkl"
+    )
+    spoof_l2_norm_emb: bool = True
     target_layer_keys: tuple[str, ...] = ("stage4",)
 
     target_frames_override: Optional[int] = None
     frame_crop_mode: str = "center"
     frame_pad_mode: str = "center"
 
-    cav_save_path: Optional[Path] = ROOT_DIR / "redimnet/tcav/cav_cache"
-    model_id: str = "redimnet_vox2"
+    cav_save_path: Optional[Path] = ROOT_DIR / "redimnet/tcav/cav_cache_spoof_smoke"
+    model_id: str = "redimnet_asvspoof5_main_binary_smoke"
 
     negative_mode: str = "shuffled_real"
     random_concept_repeats: int = 8
@@ -39,7 +49,7 @@ class ExperimentConfig:
     shuffle_freq: bool = True
 
     path_column: str = "path"
-    label_column: str = "speaker"
+    label_column: str = "label"
 
     seed: int = 1337
     concept_samples: int = 360

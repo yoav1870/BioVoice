@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import torch
 import torch.nn as nn
@@ -11,6 +11,28 @@ class SpeakerHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.fc(x)
+
+
+class SpoofLogRegHead(nn.Module):
+    def __init__(
+        self,
+        coef: torch.Tensor,
+        intercept: torch.Tensor,
+        mean: torch.Tensor,
+        scale: torch.Tensor,
+    ) -> None:
+        super().__init__()
+        self.register_buffer("coef", coef.reshape(1, -1).float())
+        self.register_buffer("intercept", intercept.reshape(1).float())
+        self.register_buffer("mean", mean.reshape(1, -1).float())
+        self.register_buffer("scale", scale.reshape(1, -1).float())
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_std = (x - self.mean) / torch.clamp(self.scale, min=1e-12)
+        spoof_logit = x_std @ self.coef.transpose(0, 1) + self.intercept
+        spoof_logit = spoof_logit.squeeze(1)
+        zero_logit = torch.zeros_like(spoof_logit)
+        return torch.stack([zero_logit, spoof_logit], dim=1)
 
 
 class ReDimNetMelLogitsWrapper(nn.Module):

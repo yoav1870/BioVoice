@@ -1,4 +1,4 @@
-from enum import EnumType
+from enum import Enum
 
 FREQUENCY_BIN_COUNT = 64
 SAMPLE_RATE = 16000
@@ -18,7 +18,7 @@ TOP_DB = 20
 
 # print(TARGET_FRAMES) # debug
 
-class LABEL_STRINGS(EnumType):
+class LABEL_STRINGS(Enum):
     ANGRY = "angry"
     HAPPY = "happy"
     SAD = "sad"

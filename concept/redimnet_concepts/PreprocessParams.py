@@ -4,9 +4,11 @@ FREQUENCY_BIN_COUNT = 72
 SAMPLE_RATE = 16000
 
 N_FFT = 512
-WINDOW_LENGTH = N_FFT
-HOP_LENGTH = 160
+WINDOW_LENGTH = 400
+HOP_LENGTH = 240
 MAX_SPECTOGRAM_DURATION_IN_SECONDS = 4.5 #Set to 7.06 for double_sentence training, for 4.5 otherwise.
+F_MIN = 20
+F_MAX = 7600
 
 #Calculate the max number of samples for the target duration
 MAX_SAMPLES = int(MAX_SPECTOGRAM_DURATION_IN_SECONDS * SAMPLE_RATE)

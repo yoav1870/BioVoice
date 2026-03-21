@@ -83,7 +83,7 @@ def load_official_redimnet():
         torch.hub.load(
             "IDRnD/ReDimNet",
             "ReDimNet",
-            model_name="b5",
+            model_name="b6",
             train_type="ptn",
             dataset="vox2",
         )

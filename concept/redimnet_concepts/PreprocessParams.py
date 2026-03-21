@@ -1,6 +1,5 @@
 from enum import Enum
 
-from pathlib import Path
 
 # =========================
 # AUDIO / MEL CONFIG
@@ -21,27 +20,14 @@ TOP_DB = 20
 # TARGET DURATION
 # =========================
 MAX_SPECTOGRAM_DURATION_IN_SECONDS = 4.5
-
-# Convert duration → samples
 MAX_SAMPLES = int(MAX_SPECTOGRAM_DURATION_IN_SECONDS * SAMPLE_RATE)
 
-# Raw frame calculation (correct formula)
+# Reference: the simple non-centered formula yields 299 frames.
 RAW_TARGET_FRAMES = (MAX_SAMPLES - WINDOW_LENGTH) // HOP_LENGTH + 1
 
-# =========================
-# 🔥 IMPORTANT (ReDimNet fix)
-# Ensure divisible by 8
-# =========================
-TARGET_FRAMES = (RAW_TARGET_FRAMES // 8) * 8  # → 296
-
-# =========================
-# Optional: recompute exact duration
-# =========================
-ACTUAL_DURATION_SEC = TARGET_FRAMES * HOP_LENGTH / SAMPLE_RATE
-
-print(f"Raw frames: {RAW_TARGET_FRAMES}")  # 299
-print(f"Target frames: {TARGET_FRAMES}")  # 296
-print(f"Actual duration: {ACTUAL_DURATION_SEC:.3f} sec")  # ~4.44
+# Verified from the official ReDimNet frontend (`model.spec`) with center=True.
+# For a 4.5-second waveform (72000 samples), the mel output is (1, 72, 301).
+TARGET_FRAMES = 301
 
 
 class LABEL_STRINGS(Enum):

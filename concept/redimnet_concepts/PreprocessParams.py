@@ -1,24 +1,48 @@
 from enum import Enum
 
+from pathlib import Path
+
+# =========================
+# AUDIO / MEL CONFIG
+# =========================
 FREQUENCY_BIN_COUNT = 72
 SAMPLE_RATE = 16000
 
 N_FFT = 512
-WINDOW_LENGTH = 400
-HOP_LENGTH = 240
-MAX_SPECTOGRAM_DURATION_IN_SECONDS = 4.5 #Set to 7.06 for double_sentence training, for 4.5 otherwise.
+WINDOW_LENGTH = 400  # 25 ms
+HOP_LENGTH = 240  # 15 ms
+
 F_MIN = 20
 F_MAX = 7600
 
-#Calculate the max number of samples for the target duration
-MAX_SAMPLES = int(MAX_SPECTOGRAM_DURATION_IN_SECONDS * SAMPLE_RATE)
-
-# Calculate the target number of frames for the spectrogram
-#NOTE: For now, needs to be divisible by 8.
-TARGET_FRAMES = (MAX_SAMPLES - WINDOW_LENGTH) // HOP_LENGTH + 1 # noam: this is the right formula for the number of frames
 TOP_DB = 20
 
-# print(TARGET_FRAMES) # debug
+# =========================
+# TARGET DURATION
+# =========================
+MAX_SPECTOGRAM_DURATION_IN_SECONDS = 4.5
+
+# Convert duration → samples
+MAX_SAMPLES = int(MAX_SPECTOGRAM_DURATION_IN_SECONDS * SAMPLE_RATE)
+
+# Raw frame calculation (correct formula)
+RAW_TARGET_FRAMES = (MAX_SAMPLES - WINDOW_LENGTH) // HOP_LENGTH + 1
+
+# =========================
+# 🔥 IMPORTANT (ReDimNet fix)
+# Ensure divisible by 8
+# =========================
+TARGET_FRAMES = (RAW_TARGET_FRAMES // 8) * 8  # → 296
+
+# =========================
+# Optional: recompute exact duration
+# =========================
+ACTUAL_DURATION_SEC = TARGET_FRAMES * HOP_LENGTH / SAMPLE_RATE
+
+print(f"Raw frames: {RAW_TARGET_FRAMES}")  # 299
+print(f"Target frames: {TARGET_FRAMES}")  # 296
+print(f"Actual duration: {ACTUAL_DURATION_SEC:.3f} sec")  # ~4.44
+
 
 class LABEL_STRINGS(Enum):
     ANGRY = "angry"
@@ -29,4 +53,3 @@ class LABEL_STRINGS(Enum):
     DISGUSTED = "disgusted"
     SURPRISED = "surprised"
     CALM = "calm"
-    

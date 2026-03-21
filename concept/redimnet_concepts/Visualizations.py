@@ -8,7 +8,10 @@ import torch
 import numpy as np
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
-from .PreprocessParams import HOP_LENGTH, SAMPLE_RATE
+try:
+    from .PreprocessParams import HOP_LENGTH, SAMPLE_RATE
+except ImportError:
+    from PreprocessParams import HOP_LENGTH, SAMPLE_RATE
 
 """ 
 for extracting meta-data for organized plot savings
@@ -16,7 +19,10 @@ for extracting meta-data for organized plot savings
 import re
 from pathlib import Path
 from typing import Any
-from .HyperParams import HPARAM_ALIASES
+try:
+    from .HyperParams import HPARAM_ALIASES
+except ImportError:
+    from HyperParams import HPARAM_ALIASES
 
 """ 
 for extracting meta-data for organized plot savings

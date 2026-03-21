@@ -6,7 +6,10 @@ import librosa
 import numpy as np
 import torch.nn.functional
 
-from .PreprocessParams import *
+try:
+    from .PreprocessParams import *
+except ImportError:
+    from PreprocessParams import *
 
 # Create a logger object
 logger = logging.getLogger(__name__)

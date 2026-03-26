@@ -5,16 +5,27 @@ import librosa, librosa.display
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import chirp, square
-from .Preprocess import audio_to_mel_spectrogram
-from .Visualizations import plot_mel_spectrogram
 
-from .PreprocessParams import (
-    MAX_SPECTOGRAM_DURATION_IN_SECONDS,
-    TARGET_FRAMES,
-    FREQUENCY_BIN_COUNT,
-    HOP_LENGTH,
-    SAMPLE_RATE,
-)
+try:
+    from .Preprocess import audio_to_mel_spectrogram
+    from .Visualizations import plot_mel_spectrogram
+    from .PreprocessParams import (
+        MAX_SPECTOGRAM_DURATION_IN_SECONDS,
+        TARGET_FRAMES,
+        FREQUENCY_BIN_COUNT,
+        HOP_LENGTH,
+        SAMPLE_RATE,
+    )
+except ImportError:
+    from Preprocess import audio_to_mel_spectrogram
+    from Visualizations import plot_mel_spectrogram
+    from PreprocessParams import (
+        MAX_SPECTOGRAM_DURATION_IN_SECONDS,
+        TARGET_FRAMES,
+        FREQUENCY_BIN_COUNT,
+        HOP_LENGTH,
+        SAMPLE_RATE,
+    )
 
 OUTPUT_BASE_DIR = Path("./redimnet_concepts/concepts")
 

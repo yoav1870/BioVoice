@@ -33,10 +33,11 @@ if __package__ in (None, ""):
     from captum_tcav.asvspoof5.config import load_config
     from captum_tcav.asvspoof5.data import (
         build_tar_index,
+        fixed_speakers_for_partition,
         load_input,
         load_manifest,
         partition_for_system,
-        select_spoof_subset,
+        select_subset,
         validate_config,
     )
     from captum_tcav.asvspoof5.modeling import load_model
@@ -52,10 +53,11 @@ else:
     from .config import load_config
     from .data import (
         build_tar_index,
+        fixed_speakers_for_partition,
         load_input,
         load_manifest,
         partition_for_system,
-        select_spoof_subset,
+        select_subset,
         validate_config,
     )
     from .modeling import load_model
@@ -93,7 +95,7 @@ for system_id in config.system_ids:
     print(f"=== Running TCAV for {system_id} ({source_partition}) ===")
 
     manifest = load_manifest(config, system_id)
-    subset = select_spoof_subset(config, system_id, manifest)
+    subset = select_subset(config, system_id, manifest)
     tar_index = build_tar_index(config, system_id)
     model = load_model(config, system_id)
     resolved_layers = resolve_layers(model, config.layers)
@@ -126,7 +128,7 @@ for system_id in config.system_ids:
                         entity_label="speaker_id",
                         entity_value=speaker_id,
                         target_label="target_class",
-                        target_value=config.target_class,
+                        target_value=config.example_class,
                     ),
                     len(utt_chunk),
                 )
@@ -150,7 +152,7 @@ for system_id in config.system_ids:
                 "magnitude": 0.0,
                 "sign_count": 0.0,
                 "concept_name": concept_name,
-                "target_class": config.target_class,
+                "target_class": config.example_class,
             }
         system_totals[concept_name]["magnitude"] = (
             float(system_totals[concept_name]["magnitude"]) + float(row["magnitude"])
@@ -180,7 +182,7 @@ for system_id in config.system_ids:
 
     csv_path = write_scores_csv(
         rows=system_rows,
-        output_path=OUTPUT_DIR / f"tcav_{source_partition}_{system_id}.csv",
+        output_path=OUTPUT_DIR / f"tcav_{source_partition}_{system_id}_{config.example_class}.csv",
         fieldnames=[
             "system_id",
             "source_partition",
@@ -197,14 +199,15 @@ for system_id in config.system_ids:
         "system_id": system_id,
         "source_partition": source_partition,
         "split": config.split_name,
-        "target_class": config.target_class,
+        "target_class": config.example_class,
         "subset_seed": config.subset_seed,
         "subset_num_speakers": config.subset_num_speakers,
         "subset_utts_per_speaker": config.subset_utts_per_speaker,
         "selected_speakers": subset.selected_speakers,
+        "fixed_speakers": fixed_speakers_for_partition(config, source_partition),
         "selected_rows": int(len(subset_rows)),
     }
-    (OUTPUT_DIR / f"subset_{source_partition}_{system_id}.json").write_text(
+    (OUTPUT_DIR / f"subset_{source_partition}_{system_id}_{config.example_class}.json").write_text(
         json.dumps(subset_summary, indent=2),
         encoding="utf-8",
     )

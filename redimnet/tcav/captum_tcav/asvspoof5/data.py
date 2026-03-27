@@ -46,6 +46,8 @@ def validate_config(config: Config) -> None:
         raise ValueError("concept_names must not be empty")
     if not config.system_ids:
         raise ValueError("system_ids must not be empty")
+    if config.example_class not in {"spoof", "bonafide"}:
+        raise ValueError("example_class must be 'spoof' or 'bonafide'")
     if not config.concept_root.is_dir():
         raise FileNotFoundError(f"Missing concept root: {config.concept_root}")
     for name in config.concept_names:
@@ -76,6 +78,14 @@ def validate_config(config: Config) -> None:
             )
 
 
+def fixed_speakers_for_partition(config: Config, partition: str) -> list[str]:
+    if partition == "train":
+        return list(config.fixed_train_speakers or [])
+    if partition == "dev":
+        return list(config.fixed_dev_speakers or [])
+    raise ValueError(f"Unsupported partition: {partition}")
+
+
 def load_manifest(config: Config, system_id: str) -> pd.DataFrame:
     df = pd.read_csv(manifest_path(config, system_id))
     required_cols = {
@@ -94,42 +104,66 @@ def load_manifest(config: Config, system_id: str) -> pd.DataFrame:
     return df
 
 
-def select_spoof_subset(config: Config, system_id: str, manifest: pd.DataFrame) -> SpoofSubset:
-    spoof_df = manifest[
+def select_subset(config: Config, system_id: str, manifest: pd.DataFrame) -> SpoofSubset:
+    partition = partition_for_system(system_id)
+    target_class = system_id if config.example_class == "spoof" else "bonafide"
+    subset_df = manifest[
         manifest["split"].eq(config.split_name)
-        & manifest["target_class"].eq(system_id)
+        & manifest["target_class"].eq(target_class)
     ].copy()
-    if spoof_df.empty:
+    if subset_df.empty:
         raise RuntimeError(
-            f"No rows found for system={system_id} split={config.split_name}"
+            f"No rows found for system={system_id} class={target_class} split={config.split_name}"
         )
 
+    fixed_speakers = fixed_speakers_for_partition(config, partition)
+    if fixed_speakers:
+        subset_df = subset_df[subset_df["speaker_id"].isin(fixed_speakers)].copy()
+        if subset_df.empty:
+            raise RuntimeError(
+                f"No rows left after applying fixed speaker list for partition={partition}"
+            )
+
     speaker_counts = (
-        spoof_df.groupby("speaker_id")
+        subset_df.groupby("speaker_id")
         .agg(n_utterances=("utt_id", "size"))
         .reset_index()
     )
     eligible = speaker_counts[
         speaker_counts["n_utterances"] >= config.subset_min_utts_per_speaker
     ].copy()
-    if len(eligible) < config.subset_num_speakers:
-        raise RuntimeError(
-            "Not enough eligible speakers for subset selection: "
-            f"need {config.subset_num_speakers}, found {len(eligible)}"
-        )
 
-    rng = np.random.default_rng(config.subset_seed)
-    chosen_speakers = sorted(
-        rng.choice(
-            eligible["speaker_id"].to_numpy(),
-            size=config.subset_num_speakers,
-            replace=False,
-        ).tolist()
-    )
+    if fixed_speakers:
+        missing_fixed = sorted(set(fixed_speakers) - set(eligible["speaker_id"].tolist()))
+        if missing_fixed:
+            raise RuntimeError(
+                f"Fixed speakers do not satisfy min utterance threshold for partition={partition}: {missing_fixed}"
+            )
+        chosen_speakers = list(fixed_speakers)
+        if len(chosen_speakers) != config.subset_num_speakers:
+            raise RuntimeError(
+                "subset_num_speakers must match the fixed speaker list length "
+                f"for partition={partition}: expected {len(chosen_speakers)}, got {config.subset_num_speakers}"
+            )
+    else:
+        if len(eligible) < config.subset_num_speakers:
+            raise RuntimeError(
+                "Not enough eligible speakers for subset selection: "
+                f"need {config.subset_num_speakers}, found {len(eligible)}"
+            )
+
+        rng = np.random.default_rng(config.subset_seed)
+        chosen_speakers = sorted(
+            rng.choice(
+                eligible["speaker_id"].to_numpy(),
+                size=config.subset_num_speakers,
+                replace=False,
+            ).tolist()
+        )
 
     selected_parts: list[pd.DataFrame] = []
     for offset, speaker_id in enumerate(chosen_speakers):
-        speaker_rows = spoof_df[spoof_df["speaker_id"].eq(speaker_id)].copy()
+        speaker_rows = subset_df[subset_df["speaker_id"].eq(speaker_id)].copy()
         speaker_rows = speaker_rows.sample(
             n=config.subset_utts_per_speaker,
             random_state=config.subset_seed + offset,

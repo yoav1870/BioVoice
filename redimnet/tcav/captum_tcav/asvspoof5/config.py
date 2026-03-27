@@ -36,13 +36,15 @@ plan_base = Path(
 trained_models_base = Path("/home/SpeakerRec/BioVoice/data/models/asvspoof5_train_dev_16_systems")
 system_ids = [f"A{i:02d}" for i in range(1, 17)]
 split_name = "test"
-target_class = "spoof"
+example_class = "spoof"
 subset_seed = 42
 subset_num_speakers = 1
 subset_utts_per_speaker = 4
 subset_min_utts_per_speaker = 4
 max_clips_per_chunk = 8
 save_predictions = False
+fixed_train_speakers: list[str] = []
+fixed_dev_speakers: list[str] = []
 
 
 @dataclass(frozen=True)
@@ -61,13 +63,15 @@ class Config:
     trained_models_base: Path
     system_ids: list[str]
     split_name: str
-    target_class: str
+    example_class: str
     subset_seed: int
     subset_num_speakers: int
     subset_utts_per_speaker: int
     subset_min_utts_per_speaker: int
     max_clips_per_chunk: int = 8
     save_predictions: bool = False
+    fixed_train_speakers: list[str] | None = None
+    fixed_dev_speakers: list[str] | None = None
 
 
 def load_config() -> Config:
@@ -86,11 +90,13 @@ def load_config() -> Config:
         trained_models_base=Path(trained_models_base),
         system_ids=list(system_ids),
         split_name=str(split_name),
-        target_class=str(target_class),
+        example_class=str(example_class),
         subset_seed=int(subset_seed),
         subset_num_speakers=int(subset_num_speakers),
         subset_utts_per_speaker=int(subset_utts_per_speaker),
         subset_min_utts_per_speaker=int(subset_min_utts_per_speaker),
         max_clips_per_chunk=int(max_clips_per_chunk),
         save_predictions=bool(save_predictions),
+        fixed_train_speakers=list(fixed_train_speakers),
+        fixed_dev_speakers=list(fixed_dev_speakers),
     )

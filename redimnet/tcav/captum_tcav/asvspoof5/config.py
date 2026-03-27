@@ -34,8 +34,7 @@ plan_base = Path(
     "/home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_protocols/train_dev_16_systems_outputs"
 )
 trained_models_base = Path("/home/SpeakerRec/BioVoice/data/models/asvspoof5_train_dev_16_systems")
-source_partition = "train"
-system_id = "A01"
+system_ids = [f"A{i:02d}" for i in range(1, 17)]
 split_name = "test"
 target_class = "spoof"
 subset_seed = 42
@@ -60,8 +59,7 @@ class Config:
     random_seed: int
     plan_base: Path
     trained_models_base: Path
-    source_partition: str
-    system_id: str
+    system_ids: list[str]
     split_name: str
     target_class: str
     subset_seed: int
@@ -86,8 +84,7 @@ def load_config() -> Config:
         random_seed=int(random_seed),
         plan_base=Path(plan_base),
         trained_models_base=Path(trained_models_base),
-        source_partition=str(source_partition),
-        system_id=str(system_id),
+        system_ids=list(system_ids),
         split_name=str(split_name),
         target_class=str(target_class),
         subset_seed=int(subset_seed),

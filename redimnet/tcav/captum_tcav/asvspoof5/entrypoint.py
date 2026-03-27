@@ -35,6 +35,7 @@ if __package__ in (None, ""):
         build_tar_index,
         load_input,
         load_manifest,
+        partition_for_system,
         select_spoof_subset,
         validate_config,
     )
@@ -53,6 +54,7 @@ else:
         build_tar_index,
         load_input,
         load_manifest,
+        partition_for_system,
         select_spoof_subset,
         validate_config,
     )
@@ -86,122 +88,127 @@ random_data_iter = make_iter(
 random_concept = Concept(len(concepts), config.random_concept_name, random_data_iter)
 experimental_sets = [[concept, random_concept] for concept in concepts]
 
-manifest = load_manifest(config)
-subset = select_spoof_subset(config, manifest)
-tar_index = build_tar_index(config)
-model = load_model(config)
-resolved_layers = resolve_layers(model, config.layers)
-mytcav = TCAV(
-    model=model,
-    layers=resolved_layers,
-    save_path=str(CAV_SAVE_PATH),
-)
+for system_id in config.system_ids:
+    source_partition = partition_for_system(system_id)
+    print(f"=== Running TCAV for {system_id} ({source_partition}) ===")
 
-speaker_rows: list[tuple[list[CsvRow], int]] = []
-per_speaker_rows: list[CsvRow] = []
-subset_rows = subset.selected_rows.copy().reset_index(drop=True)
-
-for speaker_id in subset.selected_speakers:
-    speaker_df = subset_rows[subset_rows["speaker_id"].eq(speaker_id)].copy()
-    utt_ids = speaker_df["utt_id"].astype(str).tolist()
-    utt_chunks = chunk_paths(utt_ids, config.max_clips_per_chunk)
-    print(
-        f"Processing system={config.system_id} speaker={speaker_id} "
-        f"chunks={len(utt_chunks)} utts={len(utt_ids)}"
+    manifest = load_manifest(config, system_id)
+    subset = select_spoof_subset(config, system_id, manifest)
+    tar_index = build_tar_index(config, system_id)
+    model = load_model(config, system_id)
+    resolved_layers = resolve_layers(model, config.layers)
+    mytcav = TCAV(
+        model=model,
+        layers=resolved_layers,
+        save_path=str(CAV_SAVE_PATH),
     )
-    weighted_chunk_rows: list[tuple[list[CsvRow], int]] = []
-    for utt_chunk in utt_chunks:
-        inputs = load_input(config, model, utt_chunk, tar_index)
-        scores = mytcav.interpret(inputs, experimental_sets, target=0)
-        weighted_chunk_rows.append(
-            (
-                flatten_scores_rows_generic(
-                    scores,
-                    experimental_sets,
-                    entity_label="speaker_id",
-                    entity_value=speaker_id,
-                    target_label="target_class",
-                    target_value=config.target_class,
-                ),
-                len(utt_chunk),
+
+    per_speaker_rows: list[CsvRow] = []
+    subset_rows = subset.selected_rows.copy().reset_index(drop=True)
+
+    for speaker_id in subset.selected_speakers:
+        speaker_df = subset_rows[subset_rows["speaker_id"].eq(speaker_id)].copy()
+        utt_ids = speaker_df["utt_id"].astype(str).tolist()
+        utt_chunks = chunk_paths(utt_ids, config.max_clips_per_chunk)
+        print(
+            f"Processing system={system_id} speaker={speaker_id} "
+            f"chunks={len(utt_chunks)} utts={len(utt_ids)}"
+        )
+        weighted_chunk_rows: list[tuple[list[CsvRow], int]] = []
+        for utt_chunk in utt_chunks:
+            inputs = load_input(config, model, utt_chunk, tar_index)
+            scores = mytcav.interpret(inputs, experimental_sets, target=0)
+            weighted_chunk_rows.append(
+                (
+                    flatten_scores_rows_generic(
+                        scores,
+                        experimental_sets,
+                        entity_label="speaker_id",
+                        entity_value=speaker_id,
+                        target_label="target_class",
+                        target_value=config.target_class,
+                    ),
+                    len(utt_chunk),
+                )
+            )
+        per_speaker_rows.extend(
+            aggregate_rows_by_weight_generic(
+                weighted_chunk_rows,
+                entity_label="speaker_id",
+                target_label="target_class",
             )
         )
-    speaker_rows.extend(weighted_chunk_rows)
-    per_speaker_rows.extend(
-        aggregate_rows_by_weight_generic(
-            weighted_chunk_rows,
-            entity_label="speaker_id",
-            target_label="target_class",
+
+    system_totals: dict[str, dict[str, float | str]] = {}
+    for row in per_speaker_rows:
+        concept_name = str(row["concept_name"])
+        if concept_name not in system_totals:
+            system_totals[concept_name] = {
+                "system_id": system_id,
+                "source_partition": source_partition,
+                "split": config.split_name,
+                "magnitude": 0.0,
+                "sign_count": 0.0,
+                "concept_name": concept_name,
+                "target_class": config.target_class,
+            }
+        system_totals[concept_name]["magnitude"] = (
+            float(system_totals[concept_name]["magnitude"]) + float(row["magnitude"])
         )
+        system_totals[concept_name]["sign_count"] = (
+            float(system_totals[concept_name]["sign_count"]) + float(row["sign_count"])
+        )
+
+    system_rows: list[CsvRow] = []
+    num_speakers = len(subset.selected_speakers)
+    for concept_name, row in system_totals.items():
+        if concept_name == config.random_concept_name:
+            continue
+        system_rows.append(
+            {
+                "system_id": row["system_id"],
+                "source_partition": row["source_partition"],
+                "split": row["split"],
+                "speaker_id": "ALL_SELECTED",
+                "magnitude": float(format(float(row["magnitude"]) / num_speakers, "g")),
+                "sign_count": float(format(float(row["sign_count"]) / num_speakers, "g")),
+                "concept_name": concept_name,
+                "target_class": row["target_class"],
+            }
+        )
+    system_rows.sort(key=lambda row: str(row["concept_name"]))
+
+    csv_path = write_scores_csv(
+        rows=system_rows,
+        output_path=OUTPUT_DIR / f"tcav_{source_partition}_{system_id}.csv",
+        fieldnames=[
+            "system_id",
+            "source_partition",
+            "split",
+            "speaker_id",
+            "magnitude",
+            "sign_count",
+            "concept_name",
+            "target_class",
+        ],
     )
 
-system_totals: dict[str, dict[str, float | str]] = {}
-for row in per_speaker_rows:
-    concept_name = str(row["concept_name"])
-    if concept_name not in system_totals:
-        system_totals[concept_name] = {
-            "system_id": config.system_id,
-            "source_partition": config.source_partition,
-            "split": config.split_name,
-            "magnitude": 0.0,
-            "sign_count": 0.0,
-            "concept_name": concept_name,
-            "target_class": config.target_class,
-        }
-    system_totals[concept_name]["magnitude"] = (
-        float(system_totals[concept_name]["magnitude"]) + float(row["magnitude"])
-    )
-    system_totals[concept_name]["sign_count"] = (
-        float(system_totals[concept_name]["sign_count"]) + float(row["sign_count"])
+    subset_summary = {
+        "system_id": system_id,
+        "source_partition": source_partition,
+        "split": config.split_name,
+        "target_class": config.target_class,
+        "subset_seed": config.subset_seed,
+        "subset_num_speakers": config.subset_num_speakers,
+        "subset_utts_per_speaker": config.subset_utts_per_speaker,
+        "selected_speakers": subset.selected_speakers,
+        "selected_rows": int(len(subset_rows)),
+    }
+    (OUTPUT_DIR / f"subset_{source_partition}_{system_id}.json").write_text(
+        json.dumps(subset_summary, indent=2),
+        encoding="utf-8",
     )
 
-system_rows: list[CsvRow] = []
-num_speakers = len(subset.selected_speakers)
-for concept_name, row in system_totals.items():
-    system_rows.append(
-        {
-            "system_id": row["system_id"],
-            "source_partition": row["source_partition"],
-            "split": row["split"],
-            "speaker_id": "ALL_SELECTED",
-            "magnitude": float(format(float(row["magnitude"]) / num_speakers, "g")),
-            "sign_count": float(format(float(row["sign_count"]) / num_speakers, "g")),
-            "concept_name": concept_name,
-            "target_class": row["target_class"],
-        }
-    )
-system_rows.sort(key=lambda row: str(row["concept_name"]))
+    print(f"Completed {system_id}. CSV path: {csv_path}")
 
-csv_path = write_scores_csv(
-    rows=system_rows,
-    output_path=OUTPUT_DIR / f"tcav_{config.source_partition}_{config.system_id}.csv",
-    fieldnames=[
-        "system_id",
-        "source_partition",
-        "split",
-        "speaker_id",
-        "magnitude",
-        "sign_count",
-        "concept_name",
-        "target_class",
-    ],
-)
-
-subset_summary = {
-    "system_id": config.system_id,
-    "source_partition": config.source_partition,
-    "split": config.split_name,
-    "target_class": config.target_class,
-    "subset_seed": config.subset_seed,
-    "subset_num_speakers": config.subset_num_speakers,
-    "subset_utts_per_speaker": config.subset_utts_per_speaker,
-    "selected_speakers": subset.selected_speakers,
-    "selected_rows": int(len(subset_rows)),
-}
-(OUTPUT_DIR / f"subset_{config.source_partition}_{config.system_id}.json").write_text(
-    json.dumps(subset_summary, indent=2),
-    encoding="utf-8",
-)
-
-print("TCAV completed.")
-print(f"CSV path: {csv_path}")
+print("TCAV completed for all requested systems.")

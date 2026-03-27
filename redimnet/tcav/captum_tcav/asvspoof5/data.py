@@ -24,17 +24,28 @@ class SpoofSubset:
     selected_speakers: list[str]
 
 
-def manifest_path(config: Config) -> Path:
-    return config.plan_base / config.source_partition / "selected_utterances_plan.csv"
+def partition_for_system(system_id: str) -> str:
+    numeric = int(system_id[1:])
+    if 1 <= numeric <= 8:
+        return "train"
+    if 9 <= numeric <= 16:
+        return "dev"
+    raise ValueError(f"Unsupported system_id: {system_id}")
 
 
-def model_dir(config: Config) -> Path:
-    return config.trained_models_base / config.source_partition / config.system_id
+def manifest_path(config: Config, system_id: str) -> Path:
+    return config.plan_base / partition_for_system(system_id) / "selected_utterances_plan.csv"
+
+
+def model_dir(config: Config, system_id: str) -> Path:
+    return config.trained_models_base / partition_for_system(system_id) / system_id
 
 
 def validate_config(config: Config) -> None:
     if not config.concept_names:
         raise ValueError("concept_names must not be empty")
+    if not config.system_ids:
+        raise ValueError("system_ids must not be empty")
     if not config.concept_root.is_dir():
         raise FileNotFoundError(f"Missing concept root: {config.concept_root}")
     for name in config.concept_names:
@@ -49,20 +60,24 @@ def validate_config(config: Config) -> None:
         raise ValueError(
             "subset_min_utts_per_speaker must be >= subset_utts_per_speaker"
         )
-    m_path = manifest_path(config)
-    if not m_path.exists():
-        raise FileNotFoundError(f"Missing manifest: {m_path}")
-    m_dir = model_dir(config)
-    if not (m_dir / "scaler.pkl").exists():
-        raise FileNotFoundError(f"Missing scaler artifact: {m_dir / 'scaler.pkl'}")
-    if not (m_dir / "logistic_regression.pkl").exists():
-        raise FileNotFoundError(
-            f"Missing logistic artifact: {m_dir / 'logistic_regression.pkl'}"
-        )
+    for system_id in config.system_ids:
+        _ = partition_for_system(system_id)
+        m_path = manifest_path(config, system_id)
+        if not m_path.exists():
+            raise FileNotFoundError(f"Missing manifest for {system_id}: {m_path}")
+        m_dir = model_dir(config, system_id)
+        if not (m_dir / "scaler.pkl").exists():
+            raise FileNotFoundError(
+                f"Missing scaler artifact for {system_id}: {m_dir / 'scaler.pkl'}"
+            )
+        if not (m_dir / "logistic_regression.pkl").exists():
+            raise FileNotFoundError(
+                f"Missing logistic artifact for {system_id}: {m_dir / 'logistic_regression.pkl'}"
+            )
 
 
-def load_manifest(config: Config) -> pd.DataFrame:
-    df = pd.read_csv(manifest_path(config))
+def load_manifest(config: Config, system_id: str) -> pd.DataFrame:
+    df = pd.read_csv(manifest_path(config, system_id))
     required_cols = {
         "split",
         "speaker_id",
@@ -79,14 +94,14 @@ def load_manifest(config: Config) -> pd.DataFrame:
     return df
 
 
-def select_spoof_subset(config: Config, manifest: pd.DataFrame) -> SpoofSubset:
+def select_spoof_subset(config: Config, system_id: str, manifest: pd.DataFrame) -> SpoofSubset:
     spoof_df = manifest[
         manifest["split"].eq(config.split_name)
-        & manifest["target_class"].eq(config.system_id)
+        & manifest["target_class"].eq(system_id)
     ].copy()
     if spoof_df.empty:
         raise RuntimeError(
-            f"No rows found for system={config.system_id} split={config.split_name}"
+            f"No rows found for system={system_id} split={config.split_name}"
         )
 
     speaker_counts = (
@@ -126,19 +141,20 @@ def select_spoof_subset(config: Config, manifest: pd.DataFrame) -> SpoofSubset:
     return SpoofSubset(selected_rows=selected, selected_speakers=chosen_speakers)
 
 
-def _resolve_tar_dir_and_prefix(config: Config) -> tuple[Path, str]:
+def _resolve_tar_dir_and_prefix(config: Config, system_id: str) -> tuple[Path, str]:
     tar_root = config.plan_base.parents[1]
-    if config.source_partition == "train":
+    partition = partition_for_system(system_id)
+    if partition == "train":
         return (
             tar_root / "ASVspoof5_audio_train_tars",
             "flac_T_*.tar",
         )
-    if config.source_partition == "dev":
+    if partition == "dev":
         return (
             tar_root / "ASVspoof5_audio_dev_tars",
             "flac_D_*.tar",
         )
-    raise ValueError(f"Unsupported source_partition: {config.source_partition}")
+    raise ValueError(f"Unsupported source_partition: {partition}")
 
 
 def _build_tar_member_index(tar_dir: Path, tar_prefix: str) -> dict[str, tuple[Path, str]]:
@@ -201,6 +217,6 @@ def load_input(
     return torch.stack(mel_batch)
 
 
-def build_tar_index(config: Config) -> dict[str, tuple[Path, str]]:
-    tar_dir, tar_prefix = _resolve_tar_dir_and_prefix(config)
+def build_tar_index(config: Config, system_id: str) -> dict[str, tuple[Path, str]]:
+    tar_dir, tar_prefix = _resolve_tar_dir_and_prefix(config, system_id)
     return _build_tar_member_index(tar_dir, tar_prefix)

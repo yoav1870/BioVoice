@@ -73,7 +73,7 @@ def load_logistic_artifacts(
     return scaler, classifier
 
 
-def load_model(config: Config) -> torch.nn.Module:
+def load_model(config: Config, system_id: str) -> torch.nn.Module:
     redim_model = cast(
         torch.nn.Module,
         torch.hub.load(
@@ -84,5 +84,5 @@ def load_model(config: Config) -> torch.nn.Module:
             dataset=config.model_dataset,
         ),
     ).eval()
-    scaler, classifier = load_logistic_artifacts(model_dir(config))
+    scaler, classifier = load_logistic_artifacts(model_dir(config, system_id))
     return ReDimNetWithSpoofLogit(redim_model, scaler, classifier).eval()

@@ -86,6 +86,14 @@ def fixed_speakers_for_partition(config: Config, partition: str) -> list[str]:
     raise ValueError(f"Unsupported partition: {partition}")
 
 
+def excluded_speakers_for_partition(config: Config, partition: str) -> list[str]:
+    if partition == "train":
+        return list(config.excluded_train_speakers or [])
+    if partition == "dev":
+        return list(config.excluded_dev_speakers or [])
+    raise ValueError(f"Unsupported partition: {partition}")
+
+
 def load_manifest(config: Config, system_id: str) -> pd.DataFrame:
     df = pd.read_csv(manifest_path(config, system_id))
     required_cols = {
@@ -117,7 +125,21 @@ def select_subset(config: Config, system_id: str, manifest: pd.DataFrame) -> Spo
         )
 
     fixed_speakers = fixed_speakers_for_partition(config, partition)
+    excluded_speakers = excluded_speakers_for_partition(config, partition)
+
+    if excluded_speakers:
+        subset_df = subset_df[~subset_df["speaker_id"].isin(excluded_speakers)].copy()
+        if subset_df.empty:
+            raise RuntimeError(
+                f"No rows left after applying excluded speaker list for partition={partition}"
+            )
+
     if fixed_speakers:
+        overlap = sorted(set(fixed_speakers).intersection(excluded_speakers))
+        if overlap:
+            raise RuntimeError(
+                f"Fixed and excluded speaker lists overlap for partition={partition}: {overlap}"
+            )
         subset_df = subset_df[subset_df["speaker_id"].isin(fixed_speakers)].copy()
         if subset_df.empty:
             raise RuntimeError(

@@ -38,14 +38,16 @@ trained_models_base = Path(
 )
 system_ids = [f"A{i:02d}" for i in range(1, 17)]
 split_name = "test"
-example_class = "bonafide"
+example_class = "spoof"
 subset_seed = 42
 subset_num_speakers = 20
 subset_utts_per_speaker = 20
 subset_min_utts_per_speaker = 20
 max_clips_per_chunk = 10
 save_predictions = False
-fixed_train_speakers = [
+fixed_train_speakers: list[str] = []
+fixed_dev_speakers: list[str] = []
+excluded_train_speakers = [
     "T_0380",
     "T_0411",
     "T_0635",
@@ -67,8 +69,7 @@ fixed_train_speakers = [
     "T_4913",
     "T_5053",
 ]
-
-fixed_dev_speakers = [
+excluded_dev_speakers = [
     "D_0430",
     "D_0461",
     "D_0546",
@@ -90,6 +91,7 @@ fixed_dev_speakers = [
     "D_5112",
     "D_5248",
 ]
+output_subdir = "spoof_excluding_previous_fixed_speakers_seed42"
 
 
 @dataclass(frozen=True)
@@ -113,10 +115,13 @@ class Config:
     subset_num_speakers: int
     subset_utts_per_speaker: int
     subset_min_utts_per_speaker: int
+    output_subdir: str
     max_clips_per_chunk: int = 8
     save_predictions: bool = False
     fixed_train_speakers: list[str] | None = None
     fixed_dev_speakers: list[str] | None = None
+    excluded_train_speakers: list[str] | None = None
+    excluded_dev_speakers: list[str] | None = None
 
 
 def load_config() -> Config:
@@ -140,8 +145,11 @@ def load_config() -> Config:
         subset_num_speakers=int(subset_num_speakers),
         subset_utts_per_speaker=int(subset_utts_per_speaker),
         subset_min_utts_per_speaker=int(subset_min_utts_per_speaker),
+        output_subdir=str(output_subdir),
         max_clips_per_chunk=int(max_clips_per_chunk),
         save_predictions=bool(save_predictions),
         fixed_train_speakers=list(fixed_train_speakers),
         fixed_dev_speakers=list(fixed_dev_speakers),
+        excluded_train_speakers=list(excluded_train_speakers),
+        excluded_dev_speakers=list(excluded_dev_speakers),
     )

@@ -10,10 +10,9 @@ from pathlib import Path
 RUNTIME_DIR = Path(__file__).resolve().parent
 TEMP_DIR = RUNTIME_DIR / "tmp"
 CAV_SAVE_PATH = RUNTIME_DIR / "cav_cache"
-OUTPUT_DIR = RUNTIME_DIR / "output"
+OUTPUT_ROOT = RUNTIME_DIR / "output"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 CAV_SAVE_PATH.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 os.environ["TMPDIR"] = str(TEMP_DIR)
 os.environ["TMP"] = str(TEMP_DIR)
 os.environ["TEMP"] = str(TEMP_DIR)
@@ -65,6 +64,8 @@ else:
 
 config = load_config()
 validate_config(config)
+OUTPUT_DIR = OUTPUT_ROOT / config.output_subdir
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 concepts = [
     Concept(
@@ -205,6 +206,11 @@ for system_id in config.system_ids:
         "subset_utts_per_speaker": config.subset_utts_per_speaker,
         "selected_speakers": subset.selected_speakers,
         "fixed_speakers": fixed_speakers_for_partition(config, source_partition),
+        "excluded_speakers": (
+            config.excluded_train_speakers
+            if source_partition == "train"
+            else config.excluded_dev_speakers
+        ),
         "selected_rows": int(len(subset_rows)),
     }
     (OUTPUT_DIR / f"subset_{source_partition}_{system_id}_{config.example_class}.json").write_text(

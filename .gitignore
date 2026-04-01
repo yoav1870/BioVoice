@@ -1,5 +1,6 @@
 ### Data ###
 *.csv
+*.tsv
 *.dat
 *.efx
 *.gbr

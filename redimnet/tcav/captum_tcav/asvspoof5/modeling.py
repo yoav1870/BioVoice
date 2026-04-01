@@ -84,5 +84,10 @@ def load_model(config: Config, system_id: str) -> torch.nn.Module:
             dataset=config.model_dataset,
         ),
     ).eval()
-    scaler, classifier = load_logistic_artifacts(model_dir(config, system_id))
+    logistic_dir = (
+        config.global_model_dir
+        if config.model_loading_mode == "global"
+        else model_dir(config, system_id)
+    )
+    scaler, classifier = load_logistic_artifacts(logistic_dir)
     return ReDimNetWithSpoofLogit(redim_model, scaler, classifier).eval()

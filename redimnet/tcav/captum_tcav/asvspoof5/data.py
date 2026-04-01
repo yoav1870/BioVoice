@@ -48,6 +48,10 @@ def validate_config(config: Config) -> None:
         raise ValueError("system_ids must not be empty")
     if config.example_class not in {"spoof", "bonafide"}:
         raise ValueError("example_class must be 'spoof' or 'bonafide'")
+    if config.target_class_mode not in {"single", "both"}:
+        raise ValueError("target_class_mode must be 'single' or 'both'")
+    if config.model_loading_mode not in {"per_system", "global"}:
+        raise ValueError("model_loading_mode must be 'per_system' or 'global'")
     if config.output_mode not in {"mean", "row"}:
         raise ValueError("output_mode must be 'mean' or 'row'")
     if not config.concept_root.is_dir():
@@ -77,6 +81,16 @@ def validate_config(config: Config) -> None:
         if not (m_dir / "logistic_regression.pkl").exists():
             raise FileNotFoundError(
                 f"Missing logistic artifact for {system_id}: {m_dir / 'logistic_regression.pkl'}"
+            )
+    if config.model_loading_mode == "global":
+        if not (config.global_model_dir / "scaler.pkl").exists():
+            raise FileNotFoundError(
+                f"Missing global scaler artifact: {config.global_model_dir / 'scaler.pkl'}"
+            )
+        if not (config.global_model_dir / "logistic_regression.pkl").exists():
+            raise FileNotFoundError(
+                "Missing global logistic artifact: "
+                f"{config.global_model_dir / 'logistic_regression.pkl'}"
             )
 
 
@@ -114,9 +128,15 @@ def load_manifest(config: Config, system_id: str) -> pd.DataFrame:
     return df
 
 
-def select_subset(config: Config, system_id: str, manifest: pd.DataFrame) -> SpoofSubset:
+def select_subset_for_class(
+    config: Config,
+    system_id: str,
+    manifest: pd.DataFrame,
+    example_class: str,
+    forced_speakers: list[str] | None = None,
+) -> SpoofSubset:
     partition = partition_for_system(system_id)
-    target_class = system_id if config.example_class == "spoof" else "bonafide"
+    target_class = system_id if example_class == "spoof" else "bonafide"
     subset_df = manifest[
         manifest["split"].eq(config.split_name)
         & manifest["target_class"].eq(target_class)
@@ -126,7 +146,9 @@ def select_subset(config: Config, system_id: str, manifest: pd.DataFrame) -> Spo
             f"No rows found for system={system_id} class={target_class} split={config.split_name}"
         )
 
-    fixed_speakers = fixed_speakers_for_partition(config, partition)
+    fixed_speakers = (
+        list(forced_speakers) if forced_speakers is not None else fixed_speakers_for_partition(config, partition)
+    )
     excluded_speakers = excluded_speakers_for_partition(config, partition)
 
     if excluded_speakers:
@@ -197,6 +219,64 @@ def select_subset(config: Config, system_id: str, manifest: pd.DataFrame) -> Spo
 
     selected = pd.concat(selected_parts, axis=0, ignore_index=True)
     return SpoofSubset(selected_rows=selected, selected_speakers=chosen_speakers)
+
+
+def shared_speakers_for_both_classes(
+    config: Config,
+    system_id: str,
+    manifest: pd.DataFrame,
+) -> list[str]:
+    partition = partition_for_system(system_id)
+    excluded_speakers = excluded_speakers_for_partition(config, partition)
+    fixed_speakers = fixed_speakers_for_partition(config, partition)
+
+    def eligible_speakers(example_class: str) -> set[str]:
+        target_class = system_id if example_class == "spoof" else "bonafide"
+        subset_df = manifest[
+            manifest["split"].eq(config.split_name)
+            & manifest["target_class"].eq(target_class)
+        ].copy()
+        if excluded_speakers:
+            subset_df = subset_df[~subset_df["speaker_id"].isin(excluded_speakers)].copy()
+        speaker_counts = (
+            subset_df.groupby("speaker_id")
+            .agg(n_utterances=("utt_id", "size"))
+            .reset_index()
+        )
+        eligible = speaker_counts[
+            speaker_counts["n_utterances"] >= config.subset_min_utts_per_speaker
+        ]["speaker_id"].astype(str)
+        return set(eligible.tolist())
+
+    shared = sorted(eligible_speakers("spoof").intersection(eligible_speakers("bonafide")))
+    if fixed_speakers:
+        shared = [speaker for speaker in fixed_speakers if speaker in set(shared)]
+    if len(shared) < config.subset_num_speakers:
+        raise RuntimeError(
+            "Not enough eligible shared speakers between spoof and bonafide for "
+            f"{system_id}: need {config.subset_num_speakers}, found {len(shared)}"
+        )
+    if fixed_speakers:
+        if len(shared) != config.subset_num_speakers:
+            raise RuntimeError(
+                "subset_num_speakers must match the fixed shared speaker list length "
+                f"for partition={partition}: expected {len(shared)}, got {config.subset_num_speakers}"
+            )
+        return shared
+
+    rng = np.random.default_rng(config.subset_seed)
+    chosen = sorted(
+        rng.choice(
+            np.array(shared, dtype=object),
+            size=config.subset_num_speakers,
+            replace=False,
+        ).tolist()
+    )
+    return chosen
+
+
+def select_subset(config: Config, system_id: str, manifest: pd.DataFrame) -> SpoofSubset:
+    return select_subset_for_class(config, system_id, manifest, config.example_class)
 
 
 def _resolve_tar_dir_and_prefix(config: Config, system_id: str) -> tuple[Path, str]:

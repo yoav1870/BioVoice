@@ -36,10 +36,15 @@ plan_base = Path(
 trained_models_base = Path(
     "/home/SpeakerRec/BioVoice/data/models/asvspoof5_train_dev_16_systems"
 )
+global_model_dir = Path(
+    "/home/SpeakerRec/BioVoice/data/models/asvspoof5_train_dev_16_systems_global_excluding_a12"
+)
+model_loading_mode = "global"  # options: "per_system", "global"
 system_ids = [f"A{i:02d}" for i in range(1, 17)]
-split_name = "test"
-example_class = "spoof"
-output_mode = "row" # can be "row" or "column"
+split_name = "test"  # options: "train", "test"
+example_class = "spoof"  # options when target_class_mode == "single": "spoof", "bonafide"
+target_class_mode = "both"  # options: "single", "both"
+output_mode = "row"  # options: "mean", "row"
 subset_seed = 42
 subset_num_speakers = 20
 subset_utts_per_speaker = 20
@@ -94,6 +99,19 @@ excluded_dev_speakers = [
 ]
 output_subdir = "spoof_excluding_previous_fixed_speakers_seed42"
 
+# Useful combinations:
+# - Per-system legacy averages:
+#   model_loading_mode = "per_system"
+#   target_class_mode = "single"
+#   example_class = "spoof"  # or "bonafide"
+#   output_mode = "mean"
+#
+# - Global shared model, utterance-level export for both classes:
+#   model_loading_mode = "global"
+#   target_class_mode = "both"
+#   split_name = "test"
+#   output_mode = "row"
+
 
 @dataclass(frozen=True)
 class Config:
@@ -109,9 +127,12 @@ class Config:
     random_seed: int
     plan_base: Path
     trained_models_base: Path
+    global_model_dir: Path
+    model_loading_mode: str
     system_ids: list[str]
     split_name: str
     example_class: str
+    target_class_mode: str
     output_mode: str
     subset_seed: int
     subset_num_speakers: int
@@ -140,9 +161,12 @@ def load_config() -> Config:
         random_seed=int(random_seed),
         plan_base=Path(plan_base),
         trained_models_base=Path(trained_models_base),
+        global_model_dir=Path(global_model_dir),
+        model_loading_mode=str(model_loading_mode),
         system_ids=list(system_ids),
         split_name=str(split_name),
         example_class=str(example_class),
+        target_class_mode=str(target_class_mode),
         output_mode=str(output_mode),
         subset_seed=int(subset_seed),
         subset_num_speakers=int(subset_num_speakers),

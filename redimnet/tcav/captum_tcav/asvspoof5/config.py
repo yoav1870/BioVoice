@@ -39,6 +39,7 @@ trained_models_base = Path(
 system_ids = [f"A{i:02d}" for i in range(1, 17)]
 split_name = "test"
 example_class = "spoof"
+output_mode = "row" # can be "row" or "column"
 subset_seed = 42
 subset_num_speakers = 20
 subset_utts_per_speaker = 20
@@ -111,6 +112,7 @@ class Config:
     system_ids: list[str]
     split_name: str
     example_class: str
+    output_mode: str
     subset_seed: int
     subset_num_speakers: int
     subset_utts_per_speaker: int
@@ -141,6 +143,7 @@ def load_config() -> Config:
         system_ids=list(system_ids),
         split_name=str(split_name),
         example_class=str(example_class),
+        output_mode=str(output_mode),
         subset_seed=int(subset_seed),
         subset_num_speakers=int(subset_num_speakers),
         subset_utts_per_speaker=int(subset_utts_per_speaker),

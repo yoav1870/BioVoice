@@ -48,6 +48,8 @@ def validate_config(config: Config) -> None:
         raise ValueError("system_ids must not be empty")
     if config.example_class not in {"spoof", "bonafide"}:
         raise ValueError("example_class must be 'spoof' or 'bonafide'")
+    if config.output_mode not in {"mean", "row"}:
+        raise ValueError("output_mode must be 'mean' or 'row'")
     if not config.concept_root.is_dir():
         raise FileNotFoundError(f"Missing concept root: {config.concept_root}")
     for name in config.concept_names:

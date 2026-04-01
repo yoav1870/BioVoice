@@ -7,8 +7,6 @@ import os
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 RUNTIME_DIR = Path(__file__).resolve().parent
 TEMP_DIR = RUNTIME_DIR / "tmp"
 CAV_SAVE_PATH = RUNTIME_DIR / "cav_cache"
@@ -99,28 +97,6 @@ experimental_sets = [[concept, random_concept] for concept in concepts]
 target_classes = (
     ["spoof", "bonafide"] if config.target_class_mode == "both" else [config.example_class]
 )
-
-
-def write_wide_scores_csv(
-    long_rows: list[CsvRow],
-    output_path: Path,
-) -> Path:
-    if not long_rows:
-        raise ValueError("Cannot write wide CSV for empty row set")
-    long_df = pd.DataFrame(long_rows)
-    meta_cols = ["utt_id", "speaker_id", "split", "system_id", "source_partition", "target_class"]
-    sign_df = (
-        long_df.pivot_table(
-            index=meta_cols,
-            columns="concept_name",
-            values="sign_count",
-            aggfunc="first",
-        )
-        .reset_index()
-    )
-    sign_df.columns.name = None
-    sign_df.to_csv(output_path, index=False)
-    return output_path
 
 for system_id in config.system_ids:
     source_partition = partition_for_system(system_id)
@@ -298,13 +274,6 @@ for system_id in config.system_ids:
             output_path=OUTPUT_DIR / f"tcav_{source_partition}_{system_id}_{target_class}.csv",
             fieldnames=fieldnames,
         )
-
-        if config.output_mode == "row":
-            wide_csv_path = write_wide_scores_csv(
-                csv_rows,
-                OUTPUT_DIR / f"tcav_{source_partition}_{system_id}_{target_class}_wide.csv",
-            )
-            print(f"Saved wide CSV: {wide_csv_path}")
 
         subset_summary = {
             "system_id": system_id,

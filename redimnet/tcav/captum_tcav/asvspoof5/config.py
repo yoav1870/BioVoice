@@ -42,7 +42,9 @@ global_model_dir = Path(
 model_loading_mode = "global"  # options: "per_system", "global"
 system_ids = [f"A{i:02d}" for i in range(1, 17)]
 split_name = "test"  # options: "train", "test"
-example_class = "spoof"  # options when target_class_mode == "single": "spoof", "bonafide"
+example_class = (
+    "spoof"  # options when target_class_mode == "single": "spoof", "bonafide"
+)
 target_class_mode = "both"  # options: "single", "both"
 output_mode = "row"  # options: "mean", "row"
 subset_seed = 42
@@ -53,51 +55,53 @@ max_clips_per_chunk = 10
 save_predictions = False
 fixed_train_speakers: list[str] = []
 fixed_dev_speakers: list[str] = []
-excluded_train_speakers = [
-    "T_0380",
-    "T_0411",
-    "T_0635",
-    "T_0897",
-    "T_1864",
-    "T_2149",
-    "T_2284",
-    "T_2326",
-    "T_2791",
-    "T_3455",
-    "T_3714",
-    "T_3850",
-    "T_3883",
-    "T_4049",
-    "T_4126",
-    "T_4175",
-    "T_4618",
-    "T_4769",
-    "T_4913",
-    "T_5053",
-]
-excluded_dev_speakers = [
-    "D_0430",
-    "D_0461",
-    "D_0546",
-    "D_0956",
-    "D_2288",
-    "D_2884",
-    "D_2937",
-    "D_2975",
-    "D_3192",
-    "D_3501",
-    "D_3668",
-    "D_3927",
-    "D_3964",
-    "D_4023",
-    "D_4057",
-    "D_4814",
-    "D_4825",
-    "D_4888",
-    "D_5112",
-    "D_5248",
-]
-output_subdir = "spoof_excluding_previous_fixed_speakers_seed42"
+excluded_train_speakers: list[str] = []
+excluded_dev_speakers: list[str] = []
+# excluded_train_speakers = [
+#     "T_0380",
+#     "T_0411",
+#     "T_0635",
+#     "T_0897",
+#     "T_1864",
+#     "T_2149",
+#     "T_2284",
+#     "T_2326",
+#     "T_2791",
+#     "T_3455",
+#     "T_3714",
+#     "T_3850",
+#     "T_3883",
+#     "T_4049",
+#     "T_4126",
+#     "T_4175",
+#     "T_4618",
+#     "T_4769",
+#     "T_4913",
+#     "T_5053",
+# ]
+# excluded_dev_speakers = [
+#     "D_0430",
+#     "D_0461",
+#     "D_0546",
+#     "D_0956",
+#     "D_2288",
+#     "D_2884",
+#     "D_2937",
+#     "D_2975",
+#     "D_3192",
+#     "D_3501",
+#     "D_3668",
+#     "D_3927",
+#     "D_3964",
+#     "D_4023",
+#     "D_4057",
+#     "D_4814",
+#     "D_4825",
+#     "D_4888",
+#     "D_5112",
+#     "D_5248",
+# ]
+output_subdir = "subset_20spk_20utts_per_spk_one_logistic_head"
 
 # Useful combinations:
 # - Per-system legacy averages:

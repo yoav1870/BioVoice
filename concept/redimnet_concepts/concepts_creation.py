@@ -27,7 +27,7 @@ except ImportError:
         SAMPLE_RATE,
     )
 
-OUTPUT_BASE_DIR = Path("./redimnet_concepts/concepts")
+OUTPUT_BASE_DIR = Path("./concepts")
 
 # --- Your concept knobs (means + stds) ---
 SHORT_TIME = 0.05  # seconds

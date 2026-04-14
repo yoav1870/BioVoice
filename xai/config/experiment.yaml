@@ -10,7 +10,11 @@ model:
 
 data:
   root: "/home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/"
+  train_tars_dir: "/home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_audio_train_tars/"
+  train_protocol: "/home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_protocols/ASVspoof5.train.tsv"
   dev_tars_dir: "/home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_audio_dev_tars/"
+  dev_protocol: "/home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_protocols/ASVspoof5.dev.track_1.tsv"
+  eval_protocol: "/home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_protocols/ASVspoof5.eval.track_1.tsv"
   protocol_file: "/home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_protocols/ASVspoof5.dev.track_1.tsv"
   sample_rate: 16000
   clip_samples: 64600

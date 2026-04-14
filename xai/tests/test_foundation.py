@@ -1,6 +1,7 @@
 """Foundation tests for Phase 1: Model loading, EER computation, and module integrity.
 
-Covers requirements FOUND-01 (model loads, EER matches baseline) and FOUND-04 (self-contained module).
+Covers requirements FOUND-01 (model loads, EER matches baseline), FOUND-02 (gradient
+flow through all target layers), and FOUND-04 (self-contained module).
 """
 
 import os
@@ -219,3 +220,64 @@ class TestEERIntegration:
             "Check score polarity or input preprocessing.".format(eer * 100)
         )
         print("EER Integration Test: {:.2f}% (expected 30-36%)".format(eer * 100))
+
+
+class TestGradientFlow:
+    """Tests for gradient flow through RawNet2 target layers (FOUND-02).
+
+    Verifies that gradients propagate through all target layer groups,
+    which is a prerequisite for TCAV concept sensitivity analysis.
+    """
+
+    @pytest.mark.gpu
+    def test_gradient_flow_all_layers(self, model_config_path, weights_path, device):
+        """FOUND-02: Gradient flow through all target layers."""
+        from models.gradient_check import verify_gradient_flow
+        from models.loader import load_rawnet2
+
+        model = load_rawnet2(model_config_path, weights_path, device=device, verbose=False)
+        sample = torch.randn(2, 64600)
+        results = verify_gradient_flow(model, sample, device)
+        for layer_name, info in results.items():
+            assert info["has_grad"], "Gradient absent at {}: {}".format(
+                layer_name, info["details"]
+            )
+            assert info["mean_abs"] > 0, "Gradient is zero at {}: {}".format(
+                layer_name, info["details"]
+            )
+
+    @pytest.mark.gpu
+    def test_gru_gradient_specifically(self, model_config_path, weights_path, device):
+        """FOUND-02: GRU gradient flow (known risk -- in-place ops can break autograd)."""
+        from models.gradient_check import verify_gradient_flow
+        from models.loader import load_rawnet2
+
+        model = load_rawnet2(model_config_path, weights_path, device=device, verbose=False)
+        sample = torch.randn(2, 64600)
+        results = verify_gradient_flow(model, sample, device)
+        gru_result = results.get("GRU", {})
+        assert gru_result.get("has_grad", False), (
+            "GRU gradients are None -- check for .detach() or in-place ops in forward()"
+        )
+        assert gru_result.get("mean_abs", 0) > 0, "GRU gradients are zero"
+        # GRU should have 12 parameters (3 layers x 4 weight/bias tensors)
+        assert gru_result.get("num_params", 0) == 12, (
+            "Expected 12 GRU params, found {}".format(gru_result.get("num_params", 0))
+        )
+
+    @pytest.mark.gpu
+    def test_sinc_conv_gradient_via_activation(self, model_config_path, weights_path, device):
+        """FOUND-02: SincConv gradient flow via activation hook (no learnable params)."""
+        from models.gradient_check import verify_gradient_flow
+        from models.loader import load_rawnet2
+
+        model = load_rawnet2(model_config_path, weights_path, device=device, verbose=False)
+        sample = torch.randn(2, 64600)
+        results = verify_gradient_flow(model, sample, device)
+        sinc_result = results.get("SincConv", {})
+        assert sinc_result.get("has_grad", False), (
+            "SincConv activation gradients are None"
+        )
+        assert sinc_result.get("method") == "activation", (
+            "SincConv should use activation-based gradient check"
+        )

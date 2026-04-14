@@ -18,7 +18,7 @@ class TestModelLoading:
     """Tests for RawNet2 model loading (FOUND-01)."""
 
     def test_model_loads_without_error(self, model_config_path, weights_path, device):
-        """Load model via loader — assert no exception."""
+        """Load model via loader -- assert no exception."""
         from models.loader import load_rawnet2
 
         model = load_rawnet2(model_config_path, weights_path, device=device, verbose=False)
@@ -33,7 +33,7 @@ class TestModelLoading:
         x = sample_audio.to(device)
         with torch.no_grad():
             output = model(x)
-        assert output.shape == (2, 2), f"Expected (2, 2), got {output.shape}"
+        assert output.shape == (2, 2), "Expected (2, 2), got {}".format(output.shape)
 
     def test_model_has_expected_layers(self, model_config_path, weights_path, device):
         """Verify model contains expected named layers."""
@@ -47,7 +47,7 @@ class TestModelLoading:
             "bn_before_gru", "gru", "fc1_gru", "fc2_gru",
         }
         missing = expected - module_names
-        assert not missing, f"Missing expected layers: {missing}"
+        assert not missing, "Missing expected layers: {}".format(missing)
 
 
 class TestEERComputation:
@@ -61,7 +61,7 @@ class TestEERComputation:
         labels = np.array([1, 1, 1, 1, 0, 0, 0, 0])
         scores = np.array([0.9, 0.8, 0.85, 0.95, 0.1, 0.2, 0.15, 0.05])
         eer, threshold = compute_eer(labels, scores)
-        assert eer < 0.05, f"EER should be near 0 for perfect separation, got {eer}"
+        assert eer < 0.05, "EER should be near 0 for perfect separation, got {}".format(eer)
 
     def test_eer_computation_overlapping(self):
         """Test compute_eer with overlapping scores."""
@@ -76,7 +76,7 @@ class TestEERComputation:
             np.random.normal(0.4, 0.2, n),  # spoof
         ])
         eer, threshold = compute_eer(labels, scores)
-        assert 0.1 < eer < 0.4, f"EER should be moderate for overlapping, got {eer}"
+        assert 0.1 < eer < 0.4, "EER should be moderate for overlapping, got {}".format(eer)
 
     def test_eer_input_validation(self):
         """Test that compute_eer raises on invalid inputs."""
@@ -127,10 +127,10 @@ class TestModuleIntegrity:
                         continue  # relative import, OK
                     if top_level in allowed_prefixes:
                         continue
-                    violations.append(f"{fpath}:{lineno}: {line.strip()}")
+                    violations.append("{}:{}: {}".format(fpath, lineno, line.strip()))
 
         assert not violations, (
-            f"Found imports from outside xai/ or allowed packages:\n"
+            "Found imports from outside xai/ or allowed packages:\n"
             + "\n".join(violations)
         )
 
@@ -141,7 +141,7 @@ class TestConfig:
     def test_config_yaml_valid(self, xai_root):
         """Load experiment.yaml with safe_load, assert required keys exist."""
         config_path = xai_root / "config" / "experiment.yaml"
-        assert config_path.exists(), f"Config not found: {config_path}"
+        assert config_path.exists(), "Config not found: {}".format(config_path)
 
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
@@ -163,7 +163,7 @@ class TestConfig:
     def test_model_config_yaml_valid(self, xai_root):
         """Load model_config_RawNet.yaml and verify required keys."""
         config_path = xai_root / "config" / "model_config_RawNet.yaml"
-        assert config_path.exists(), f"Config not found: {config_path}"
+        assert config_path.exists(), "Config not found: {}".format(config_path)
 
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
@@ -175,3 +175,47 @@ class TestConfig:
         assert model["nb_classes"] == 2
         assert model["gru_node"] == 1024
         assert model["nb_gru_layer"] == 3
+
+
+class TestEERIntegration:
+    """Integration tests for end-to-end EER verification (FOUND-01).
+
+    These tests require GPU, pretrained weights, and ASVspoof5 dev data.
+    They are slow and should be run with --runslow flag or directly.
+    """
+
+    @pytest.mark.slow
+    def test_eer_matches_baseline(self, model_config_path, weights_path, device, xai_root):
+        """FOUND-01: EER within expected range on ASVspoof5 dev.
+
+        Published baseline for RawNet2 (DF pretrained) on ASVspoof5 dev: ~30-36% EER.
+        We use a 5000-sample stratified subset for test speed.
+        """
+        from models.loader import load_rawnet2
+        from evaluation.inference import run_inference
+        from evaluation.eer import compute_eer
+
+        # Load config
+        config_path = xai_root / "config" / "experiment.yaml"
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+
+        # Use subset for test speed
+        config["evaluation"]["max_samples"] = 5000
+
+        # Load model
+        model = load_rawnet2(model_config_path, weights_path, device=device, verbose=False)
+
+        # Run inference
+        labels, scores = run_inference(model, config, device)
+
+        # Compute EER
+        eer, threshold = compute_eer(labels, scores)
+
+        # Expected range for ASVspoof5 dev with DF pretrained weights
+        # Published ~36% EER on eval; dev expected ~30-36%
+        assert 0.20 < eer < 0.50, (
+            "EER {:.2f}% outside expected range [20%, 50%] for ASVspoof5 dev. "
+            "Check score polarity or input preprocessing.".format(eer * 100)
+        )
+        print("EER Integration Test: {:.2f}% (expected 30-36%)".format(eer * 100))

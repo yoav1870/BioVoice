@@ -1,7 +1,7 @@
 """Foundation tests for Phase 1: Model loading, EER computation, and module integrity.
 
 Covers requirements FOUND-01 (model loads, EER matches baseline), FOUND-02 (gradient
-flow through all target layers), and FOUND-04 (self-contained module).
+flow through all target layers), FOUND-03 (reproducibility), and FOUND-04 (self-contained module).
 """
 
 import os
@@ -280,4 +280,116 @@ class TestGradientFlow:
         )
         assert sinc_result.get("method") == "activation", (
             "SincConv should use activation-based gradient check"
+        )
+
+
+class TestReproducibility:
+    """Tests for FOUND-03: Config-driven reproducible experiments."""
+
+    def test_set_seed_deterministic_torch(self):
+        """Same seed produces same torch random numbers."""
+        from experiments.reproducibility import set_seed
+
+        set_seed(42)
+        a = torch.randn(10)
+        set_seed(42)
+        b = torch.randn(10)
+        assert torch.equal(a, b), "Same seed must produce identical torch tensors"
+
+    def test_set_seed_deterministic_numpy(self):
+        """Same seed produces same numpy random numbers."""
+        from experiments.reproducibility import set_seed
+
+        set_seed(42)
+        a = np.random.randn(10)
+        set_seed(42)
+        b = np.random.randn(10)
+        assert np.array_equal(a, b), "Same seed must produce identical numpy arrays"
+
+    def test_experiment_dir_has_all_artifacts(self, tmp_path):
+        """FOUND-03: Experiment dir contains git hash, pip freeze, config, seed."""
+        from experiments.reproducibility import create_experiment_dir, verify_experiment_dir
+
+        config = {
+            "experiment": {"name": "test_run", "seed": 42},
+            "output": {"results_dir": str(tmp_path)},
+        }
+        exp_dir = create_experiment_dir(config, base_dir=str(tmp_path))
+        result = verify_experiment_dir(exp_dir)
+        assert result["complete"], "Missing artifacts: {}".format(result["missing"])
+        assert "config_snapshot.yaml" not in result["missing"]
+        assert "git_hash.txt" not in result["missing"]
+        assert "environment.txt" not in result["missing"]
+        assert "seed.txt" not in result["missing"]
+
+    def test_config_snapshot_matches_input(self, tmp_path):
+        """Config snapshot in experiment dir matches the input config."""
+        from experiments.reproducibility import create_experiment_dir
+
+        config = {
+            "experiment": {"name": "test_snapshot", "seed": 123},
+            "model": {"name": "rawnet2"},
+            "output": {"results_dir": str(tmp_path)},
+        }
+        exp_dir = create_experiment_dir(config, base_dir=str(tmp_path))
+        with open(os.path.join(exp_dir, "config_snapshot.yaml")) as f:
+            saved_config = yaml.safe_load(f)
+        assert saved_config == config, "Saved config must match input config exactly"
+
+    def test_seed_file_contains_correct_seed(self, tmp_path):
+        """Seed file contains the seed from config."""
+        from experiments.reproducibility import create_experiment_dir
+
+        config = {
+            "experiment": {"name": "test_seed", "seed": 99},
+            "output": {"results_dir": str(tmp_path)},
+        }
+        exp_dir = create_experiment_dir(config, base_dir=str(tmp_path))
+        with open(os.path.join(exp_dir, "seed.txt")) as f:
+            saved_seed = f.read().strip()
+        assert saved_seed == "99", "Seed file should contain '99', got '{}'".format(saved_seed)
+
+    @pytest.mark.gpu
+    def test_model_inference_deterministic_same_seed(self):
+        """FOUND-03: Same seed + same input = identical model output.
+
+        Verifies that with deterministic seeding enabled, the same input
+        tensor fed through the model twice produces identical output.
+        Note: GRU on CUDA can have minor floating-point non-determinism,
+        so we use allclose with tight tolerance rather than exact equality.
+        """
+        from experiments.reproducibility import set_seed
+        from models.loader import load_rawnet2
+
+        config_path = os.path.join(
+            os.environ.get("XAI_ROOT", os.path.join(os.path.dirname(__file__), "..")),
+            "config",
+            "model_config_RawNet.yaml",
+        )
+        weights_dir = os.path.join(
+            os.environ.get("XAI_ROOT", os.path.join(os.path.dirname(__file__), "..")),
+            "models",
+            "weights",
+        )
+        # Find weights file
+        weight_files = glob.glob(os.path.join(weights_dir, "*.pth"))
+        if not weight_files:
+            pytest.skip("No model weights found")
+
+        set_seed(42)
+        model = load_rawnet2(config_path, weight_files[0], verbose=False)
+
+        # Generate fixed input from seeded state
+        x = torch.randn(2, 64600).to("cuda:0")
+
+        # Run same input twice -- model in eval mode should be deterministic
+        with torch.no_grad():
+            out1 = model(x)
+            out2 = model(x)
+
+        if isinstance(out1, tuple):
+            out1, out2 = out1[-1], out2[-1]
+        assert torch.allclose(out1, out2, atol=1e-5), (
+            "Same input must produce near-identical model output in eval mode. "
+            "Max diff: {}".format((out1 - out2).abs().max().item())
         )

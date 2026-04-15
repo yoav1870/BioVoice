@@ -39,12 +39,16 @@ def pool_activation(act: torch.Tensor) -> torch.Tensor:
     """
     if act.dim() == 3:
         batch, d1, d2 = act.shape
-        if d1 < d2:
-            # (batch, C, T) where C < T -- conv layer: Global Average Pool
+        if d1 < d2 and d2 > d1 * 8:
+            # (batch, seq_len, H) where H >> seq_len -- GRU hidden state: last timestep
+            # Discriminator: H is substantially larger than seq_len (e.g. 1024 vs 10-20)
+            return act[:, -1, :]
+        elif d1 <= d2:
+            # (batch, C, T) where C < T -- conv layer: Global Average Pool over time
             return act.mean(dim=-1)
         else:
-            # (batch, seq_len, H) where seq_len < H -- GRU: last timestep
-            return act[:, -1, :]
+            # (batch, T, C) where T > C -- transpose conv: Global Average Pool over time
+            return act.mean(dim=1)
     elif act.dim() == 2:
         return act
     else:

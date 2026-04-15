@@ -104,6 +104,9 @@ class ExperimentRunner:
         Raises:
             RuntimeError: If called outside a run() context.
         """
+        import sys
+        if self.xai_root not in sys.path:
+            sys.path.insert(0, self.xai_root)
         from models.loader import load_rawnet2
 
         model_config = self.config.get("model", {})

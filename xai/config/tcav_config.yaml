@@ -1,0 +1,30 @@
+model:
+  config: config/model_config_RawNet.yaml
+  weights: /home/SpeakerRec/BioVoice/xai/pre_trained_DF_RawNet2.pth
+
+data:
+  tar_dir_train: /home/SpeakerRec/BioVoice/data/ASVspoof5/flac_T
+  tar_dir_dev: /home/SpeakerRec/BioVoice/data/ASVspoof5/flac_D
+  dev_protocol: /home/SpeakerRec/BioVoice/data/ASVspoof5/ASVspoof5_protocols/ASVspoof5.dev.track_1.tsv
+  features_csv: data/features/bonafide_features.csv
+
+concepts:
+  breathiness: data/concepts/breathiness/manifest.csv
+  pitch_monotony: data/concepts/pitch_monotony/manifest.csv
+  spectral_smoothness: data/concepts/spectral_smoothness/manifest.csv
+  temporal_regularity: data/concepts/temporal_regularity/manifest.csv
+  negative_control: data/concepts/negative_control/manifest.csv
+
+tcav:
+  layers: [sinc_conv, resblock_g1, resblock_g2, pre_gru, post_gru]
+  n_clips_per_concept: 200
+  n_random_baselines: 10
+  n_dev_per_class: 500
+  n_bootstrap: 1000
+  alpha: 0.05
+  bonferroni_n_pairs: 25
+  device: "cuda:0"
+  batch_size: 32
+
+results:
+  output_dir: results/tcav

@@ -43,7 +43,9 @@ def test_significance(real_scores: List[float],
     )
 
     # Bonferroni correction: multiply p-value by number of tests
-    pval_corrected = min(float(pval) * n_pairs, 1.0)
+    # Handle NaN from scipy when all values are identical (zero variance) -- treat as p=1.0
+    pval_float = float(pval) if not np.isnan(pval) else 1.0
+    pval_corrected = min(pval_float * n_pairs, 1.0)
 
     # Bootstrap 95% CI on real TCAV scores
     real_arr = np.array(real_scores)
@@ -62,7 +64,7 @@ def test_significance(real_scores: List[float],
         ci_95 = (float(real_arr[0]), float(real_arr[0]))
 
     return {
-        'pval': float(pval),
+        'pval': pval_float,
         'pval_corrected': float(pval_corrected),
         'significant': bool(pval_corrected < 0.05),
         'ci_95': ci_95,

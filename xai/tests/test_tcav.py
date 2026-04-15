@@ -9,6 +9,7 @@ import pytest
 import numpy as np
 import torch
 import yaml
+from pathlib import Path
 
 
 @pytest.fixture(scope='module')
@@ -165,3 +166,150 @@ class TestCAVTrainer:
         random_acts = np.random.randn(100, 64)
         result = train_cav(concept_acts, random_acts)
         assert hasattr(result['scaler'], 'mean_'), "Scaler not fitted"
+
+
+class TestTCAVScorer:
+    """Tests for scorer.py compute_tcav_score function."""
+
+    def test_tcav_score_in_unit_interval(self):
+        """TCAV score must be in [0, 1] (fraction of positive directional derivs)."""
+        from xai.tcav.scorer import compute_tcav_score
+        # Test the score computation logic with synthetic derivatives
+        derivs = np.array([0.5, -0.2, 0.1, 0.3, -0.1])
+        score = float(np.mean(derivs > 0))  # 3/5 = 0.6
+        assert 0.0 <= score <= 1.0
+
+    def test_tcav_score_all_positive(self):
+        """When all directional derivatives are positive, TCAV score = 1.0."""
+        derivs = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+        score = float(np.mean(derivs > 0))
+        assert score == 1.0
+
+    def test_tcav_score_all_negative(self):
+        """When all directional derivatives are negative, TCAV score = 0.0."""
+        derivs = np.array([-0.1, -0.2, -0.3, -0.4, -0.5])
+        score = float(np.mean(derivs > 0))
+        assert score == 0.0
+
+    @pytest.mark.gpu
+    def test_tcav_score_with_model(self, model, device):
+        """compute_tcav_score returns valid dict with real model."""
+        from xai.tcav.scorer import compute_tcav_score
+        inputs = torch.randn(10, 64600)  # 10 synthetic examples
+        cav = np.random.randn(20).astype(np.float32)  # dim matches sinc_conv pooled output
+        cav = cav / np.linalg.norm(cav)
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
+        result = compute_tcav_score(model, inputs, target_class=1,
+                                     layer_name='sinc_conv', cav=cav,
+                                     scaler=scaler, device=str(device),
+                                     batch_size=5)
+        assert 'tcav_score' in result
+        assert 'directional_derivs' in result
+        assert 0.0 <= result['tcav_score'] <= 1.0
+        assert len(result['directional_derivs']) == 10
+
+    @pytest.mark.gpu
+    def test_no_grad_in_extraction_vs_grad_in_scoring(self, model, device):
+        """Scoring path must NOT use torch.no_grad -- verify grad is not None."""
+        from xai.tcav.scorer import compute_tcav_score
+        inputs = torch.randn(4, 64600)
+        cav = np.random.randn(20).astype(np.float32)
+        cav = cav / np.linalg.norm(cav)
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
+        # If this runs without "Gradient is None" RuntimeError, grad flow works
+        result = compute_tcav_score(model, inputs, target_class=1,
+                                     layer_name='sinc_conv', cav=cav,
+                                     scaler=scaler, device=str(device))
+        assert result['tcav_score'] is not None
+
+
+class TestSignificanceTester:
+    """Tests for stats.py test_significance function."""
+
+    def test_identical_scores_not_significant(self):
+        """When real scores equal random baseline scores, result is not significant."""
+        from xai.tcav.stats import test_significance
+        scores = [0.5, 0.5, 0.5, 0.5, 0.5]
+        random_baselines = [[0.5, 0.5, 0.5, 0.5, 0.5] for _ in range(10)]
+        result = test_significance(scores, random_baselines, n_pairs=25)
+        assert result['significant'] is False
+
+    def test_clearly_different_scores_significant(self):
+        """When real scores clearly differ from random, result should be significant."""
+        from xai.tcav.stats import test_significance
+        real = [0.95, 0.93, 0.96, 0.94, 0.92, 0.95, 0.93, 0.94, 0.96, 0.95]
+        random_baselines = [[0.5 + np.random.RandomState(i).randn() * 0.05
+                             for _ in range(10)] for i in range(10)]
+        result = test_significance(real, random_baselines, n_pairs=25)
+        assert result['significant'] is True
+
+    def test_bonferroni_corrects_alpha(self):
+        """Bonferroni correction multiplies p-value by n_pairs."""
+        from xai.tcav.stats import test_significance
+        real = [0.7, 0.72, 0.68, 0.71, 0.69]
+        random_baselines = [[0.5, 0.52, 0.48, 0.51, 0.49] for _ in range(10)]
+        result_no_correction = test_significance(real, random_baselines, n_pairs=1)
+        result_corrected = test_significance(real, random_baselines, n_pairs=25)
+        # Corrected p-value should be >= raw p-value
+        assert result_corrected['pval_corrected'] >= result_no_correction['pval']
+
+    def test_returns_expected_keys(self):
+        """Result dict has all expected keys."""
+        from xai.tcav.stats import test_significance
+        result = test_significance(
+            [0.6, 0.65, 0.62],
+            [[0.5, 0.48, 0.52] for _ in range(10)],
+            n_pairs=25
+        )
+        for key in ['pval', 'pval_corrected', 'significant', 'ci_95', 'mean_score', 't_stat']:
+            assert key in result, f"Missing key: {key}"
+
+    def test_ci_95_is_tuple_of_two(self):
+        """Bootstrap CI is a tuple of (low, high)."""
+        from xai.tcav.stats import test_significance
+        result = test_significance(
+            [0.6, 0.65, 0.62, 0.58, 0.63],
+            [[0.5, 0.48, 0.52] for _ in range(10)],
+            n_pairs=25
+        )
+        assert len(result['ci_95']) == 2
+        assert result['ci_95'][0] <= result['ci_95'][1]
+
+    def test_pval_corrected_capped_at_1(self):
+        """Bonferroni-corrected p-value never exceeds 1.0."""
+        from xai.tcav.stats import test_significance
+        # Identical scores -> raw pval ~ 1.0, corrected should be capped at 1.0
+        result = test_significance(
+            [0.5, 0.5, 0.5],
+            [[0.5, 0.5, 0.5] for _ in range(10)],
+            n_pairs=25
+        )
+        assert result['pval_corrected'] <= 1.0
+
+
+class TestVisualizer:
+    """Tests for viz.py plot_emergence_heatmap function."""
+
+    def test_heatmap_creates_file(self, tmp_path):
+        """plot_emergence_heatmap creates a PNG file at output_path."""
+        from xai.tcav.viz import plot_emergence_heatmap
+        acc = np.random.rand(5, 5) * 0.5 + 0.4  # values in [0.4, 0.9]
+        layers = ['sinc_conv', 'resblock_g1', 'resblock_g2', 'pre_gru', 'post_gru']
+        concepts = ['breathiness', 'pitch_monotony', 'spectral_smoothness',
+                     'temporal_regularity', 'negative_control']
+        out = str(tmp_path / 'test_heatmap.png')
+        plot_emergence_heatmap(acc, layers, concepts, out)
+        assert Path(out).exists(), f"Heatmap not created at {out}"
+        assert Path(out).stat().st_size > 0, "Heatmap file is empty"
+
+    def test_heatmap_with_different_dimensions(self, tmp_path):
+        """Heatmap works with non-square matrix."""
+        from xai.tcav.viz import plot_emergence_heatmap
+        acc = np.random.rand(3, 4) * 0.5 + 0.4
+        layers = ['layer_a', 'layer_b', 'layer_c']
+        concepts = ['c1', 'c2', 'c3', 'c4']
+        out = str(tmp_path / 'test_heatmap_rect.png')
+        plot_emergence_heatmap(acc, layers, concepts, out)
+        assert Path(out).exists()

@@ -38,7 +38,7 @@ def compute_tcav_score(model: torch.nn.Module, inputs: torch.Tensor,
 
     Returns: {'tcav_score': float in [0,1], 'directional_derivs': np.ndarray}
     """
-    model.eval()  # eval for BN/Dropout, but NO torch.no_grad()
+    model.train()  # train mode required for CuDNN GRU backward; eval() blocks RNN gradients
     cav_tensor = torch.tensor(cav, dtype=torch.float32, device=device)
     derivs = []
 

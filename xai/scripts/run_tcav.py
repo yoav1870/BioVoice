@@ -136,7 +136,7 @@ def run_tcav_pipeline(config_path: str = 'config/tcav_config.yaml'):
                             if layer not in acts:
                                 acts[layer] = []
                             acts[layer].append(pooled)
-                        ext._activations.clear()  # clear for next batch
+                        ext.activations.clear()  # clear for next batch
 
             concept_activations[concept_name] = {
                 layer: np.vstack(acts[layer]) for layer in layers
@@ -181,7 +181,7 @@ def run_tcav_pipeline(config_path: str = 'config/tcav_config.yaml'):
                             if layer not in acts:
                                 acts[layer] = []
                             acts[layer].append(pooled)
-                        ext._activations.clear()
+                        ext.activations.clear()
 
             random_activations.append({
                 layer: np.vstack(acts[layer]) for layer in layers

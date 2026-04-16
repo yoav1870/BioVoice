@@ -93,13 +93,15 @@ def compute_tcav_score(model: torch.nn.Module, inputs: torch.Tensor,
         # For conv (batch, C, T): mean over T gives (batch, C)
         # For GRU (batch, seq, H): last timestep gives (batch, H)
         if grad.dim() == 3:
-            C, T = grad.shape[1], grad.shape[2]
-            if C < T and T > C * 8:  # GRU: last timestep (seq_len << H)
-                grad_pooled = grad.detach().cpu().numpy()[:, -1, :]  # (batch, H)
-            elif C <= T:  # conv: GAP over time
-                grad_pooled = grad.detach().cpu().numpy().mean(axis=-1)  # (batch, C)
+            # RawNet2: GRU hidden size fixed at 1024; conv last dim = time steps
+            if grad.shape[-1] == 1024:
+                grad_pooled = grad.detach().cpu().numpy()[:, -1, :]   # GRU: last timestep
             else:
-                grad_pooled = grad_flat
+                grad_pooled = grad.detach().cpu().numpy().mean(axis=-1)  # conv: GAP over T
+        elif grad.dim() == 2:
+            grad_pooled = grad.detach().cpu().numpy()
+        else:
+            grad_pooled = grad_flat
         elif grad.dim() == 2:
             grad_pooled = grad.detach().cpu().numpy()  # already (batch, D)
         else:

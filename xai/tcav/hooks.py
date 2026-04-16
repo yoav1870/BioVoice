@@ -38,17 +38,14 @@ def pool_activation(act: torch.Tensor) -> torch.Tensor:
         Pooled tensor of shape (batch, features).
     """
     if act.dim() == 3:
-        batch, d1, d2 = act.shape
-        if d1 < d2 and d2 > d1 * 8:
-            # (batch, seq_len, H) where H >> seq_len -- GRU hidden state: last timestep
-            # Discriminator: H is substantially larger than seq_len (e.g. 1024 vs 10-20)
+        # RawNet2: GRU hidden size is fixed at 1024.
+        # All conv layers have last dim = time steps (never 1024).
+        if act.shape[-1] == 1024:
+            # (batch, seq_len, H=1024) -- GRU: last timestep
             return act[:, -1, :]
-        elif d1 <= d2:
-            # (batch, C, T) where C < T -- conv layer: Global Average Pool over time
-            return act.mean(dim=-1)
         else:
-            # (batch, T, C) where T > C -- transpose conv: Global Average Pool over time
-            return act.mean(dim=1)
+            # (batch, C, T) -- conv: Global Average Pool over time
+            return act.mean(dim=-1)
     elif act.dim() == 2:
         return act
     else:

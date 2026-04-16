@@ -12,13 +12,13 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def device():
     """Return available compute device."""
     return "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def xai_root():
     """Return the root path of the xai module."""
     return Path(__file__).resolve().parent.parent

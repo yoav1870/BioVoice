@@ -42,7 +42,7 @@ def load_dev_clips(protocol_path: str, tar_dir: str, label: str,
     rows = []
     with open(protocol_path, 'r') as f:
         for line in f:
-            parts = line.strip().split('\t')
+            parts = line.strip().split()
             if len(parts) >= 9 and parts[8] == label:
                 rows.append({'audio_id': parts[1], 'speaker_id': parts[0]})
 

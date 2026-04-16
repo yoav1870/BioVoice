@@ -88,3 +88,44 @@ def mock_features_csv(tmp_path):
         writer.writeheader()
         writer.writerows(rows)
     return csv_path
+
+
+@pytest.fixture
+def fake_protocol_file(tmp_path):
+    """Create a minimal ASVspoof5-format protocol file for testing."""
+    protocol = tmp_path / 'dev_protocol.tsv'
+    # 9 columns, space-delimited (NOT tab -- Phase 3 bug fix 7e42e7c)
+    # col[0]=speaker, col[1]=audio_id, col[7]=attack_type, col[8]=key
+    lines = [
+        'SPK001 D_00001 - - - - - A09 spoof',
+        'SPK001 D_00002 - - - - - A09 spoof',
+        'SPK002 D_00003 - - - - - A10 spoof',
+        'SPK002 D_00004 - - - - - A10 spoof',
+        'SPK003 D_00005 - - - - - A10 spoof',
+        'SPK003 D_00006 - - - - - - bonafide',
+        'SPK004 D_00007 - - - - - - bonafide',
+        'SPK004 D_00008 - - - - - A12 spoof',
+    ]
+    protocol.write_text('\n'.join(lines) + '\n')
+    return str(protocol)
+
+
+@pytest.fixture
+def synthetic_per_system_scores():
+    """Create synthetic per-system TCAV score matrices for testing."""
+    systems = ['A09', 'A10', 'A11', 'A12', 'A13', 'A14', 'A15', 'A16']
+    concepts = ['breathiness', 'pitch_monotony', 'spectral_smoothness', 'temporal_regularity', 'negative_control']
+    layers = ['sinc_conv', 'resblock_g1', 'resblock_g2', 'pre_gru', 'post_gru']
+    rng = np.random.RandomState(42)
+    scores = {}
+    for sys_id in systems:
+        scores[sys_id] = {}
+        for concept in concepts:
+            scores[sys_id][concept] = {}
+            for layer in layers:
+                scores[sys_id][concept][layer] = {
+                    'tcav_scores': [float(x) for x in rng.uniform(0.3, 0.9, size=10)],
+                    'mean_score': float(rng.uniform(0.3, 0.9)),
+                    'pval': float(rng.uniform(0.001, 0.5)),
+                }
+    return {'systems': systems, 'concepts': concepts, 'layers': layers, 'scores': scores}

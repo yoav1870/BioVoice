@@ -1,0 +1,45 @@
+# xai/config/per_system_config.yaml
+# Per-synthesis-system TCAV analysis configuration
+# Loaded with yaml.safe_load() exclusively (Phase 1 pattern, T-03-02)
+
+model:
+  config: config/model_config_RawNet.yaml
+  weights: /home/SpeakerRec/BioVoice/pre_trained_DF_RawNet2.pth
+
+data:
+  tar_dir_dev: /home/SpeakerRec/BioVoice/data/ASVspoof5/flac_D
+  tar_dir_train: /home/SpeakerRec/BioVoice/data/ASVspoof5/flac_T
+  dev_protocol: /home/SpeakerRec/BioVoice/data/ASVspoof5/ASVspoof5_protocols/ASVspoof5.dev.track_1.tsv
+  features_csv: data/concepts/features.csv
+
+concepts:
+  breathiness:         data/concepts/breathiness/manifest.csv
+  pitch_monotony:      data/concepts/pitch_monotony/manifest.csv
+  spectral_smoothness: data/concepts/spectral_smoothness/manifest.csv
+  temporal_regularity: data/concepts/temporal_regularity/manifest.csv
+  negative_control:    data/concepts/negative_control/manifest.csv
+
+per_system:
+  layers: [sinc_conv, resblock_g1, resblock_g2, pre_gru, post_gru]
+  n_clips_per_system: 500
+  min_system_samples: 50
+  n_cav_reruns: 10
+  n_clips_per_concept: 200
+  n_random_baselines: 10
+  alpha: 0.05
+  fdr_method: benjamini_hochberg
+  device: "cuda:0"
+  batch_size: 32
+  seed: 42
+
+transferability:
+  universal_threshold: 6
+  fingerprint_threshold: 2
+
+results:
+  output_dir: results/per_system
+  phase3_cavs_dir: results/tcav/cavs
+
+experiment:
+  name: per_system_tcav
+  seed: 42

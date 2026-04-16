@@ -71,3 +71,71 @@ def test_significance(real_scores: List[float],
         'mean_score': float(np.mean(real_scores)),
         't_stat': float(t_stat),
     }
+
+
+def fdr_bh_correction(pvals, alpha=0.05):
+    """
+    Benjamini-Hochberg FDR correction for multiple hypothesis testing.
+
+    Manual implementation -- scipy.stats.false_discovery_control requires
+    scipy >= 1.11.0; project has scipy 1.10.1.
+
+    Args:
+        pvals: 1D numpy array of raw p-values
+        alpha: desired FDR level (default 0.05)
+
+    Returns:
+        dict with keys:
+        - rejected: np.ndarray of bool (True = significant after FDR)
+        - pvals_corrected: np.ndarray of BH-adjusted p-values
+        - n_significant: int count of rejected hypotheses
+    """
+    import numpy as np
+    n = len(pvals)
+    if n == 0:
+        return {
+            "rejected": np.array([], dtype=bool),
+            "pvals_corrected": np.array([]),
+            "n_significant": 0,
+        }
+
+    # NaN-safe: treat NaN as 1.0 (same convention as test_significance)
+    pvals_clean = np.where(np.isnan(pvals), 1.0, pvals)
+
+    # Sort p-values ascending
+    sorted_idx = np.argsort(pvals_clean)
+    sorted_pvals = pvals_clean[sorted_idx]
+
+    # BH critical values: (rank / n) * alpha
+    ranks = np.arange(1, n + 1)
+    bh_critical = (ranks / n) * alpha
+
+    # Compute step-up adjusted p-values (Yekutieli & Benjamini 1999 formula)
+    adjusted = np.zeros(n)
+    adjusted[sorted_idx[-1]] = sorted_pvals[-1]
+    for i in range(n - 2, -1, -1):
+        adjusted[sorted_idx[i]] = min(
+            adjusted[sorted_idx[i + 1]],
+            sorted_pvals[i] * n / (i + 1)
+        )
+    adjusted = np.minimum(adjusted, 1.0)
+
+    # Find largest k where p(k) <= bh_critical(k)
+    below_threshold = sorted_pvals <= bh_critical
+    if not np.any(below_threshold):
+        return {
+            "rejected": np.zeros(n, dtype=bool),
+            "pvals_corrected": adjusted,
+            "n_significant": 0,
+        }
+
+    # All hypotheses with rank <= max_k are rejected
+    max_k = int(np.max(np.where(below_threshold)[0]))
+    rejected = np.zeros(n, dtype=bool)
+    rejected[sorted_idx[:max_k + 1]] = True
+
+    return {
+        "rejected": rejected,
+        "pvals_corrected": adjusted,
+        "n_significant": int(np.sum(rejected)),
+    }

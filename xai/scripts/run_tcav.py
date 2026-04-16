@@ -160,7 +160,7 @@ def run_tcav_pipeline(config_path: str = 'config/tcav_config.yaml'):
 
         for baseline_idx in tqdm(range(n_baselines), desc='Random baselines'):
             clips = sample_random_baseline(
-                manifest_dir=str(XAI_ROOT / 'data'),
+                manifest_dir=str(XAI_ROOT / cfg['data']['features_csv']),
                 tar_dir=cfg['data']['tar_dir_train'],
                 n_clips=n_clips, seed=baseline_idx,
                 exclude_audio_ids=all_concept_audio_ids

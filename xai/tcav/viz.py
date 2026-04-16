@@ -72,3 +72,105 @@ def plot_emergence_heatmap(accuracy_matrix: np.ndarray,
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()
+
+
+def plot_per_system_heatmap(score_matrix, system_names, concept_names,
+                            significance_mask, output_path,
+                            title='Per-System Concept Attribution'):
+    """
+    Heatmap of TCAV scores per synthesis system and acoustic concept.
+
+    Rows = synthesis systems (A09-A16), columns = acoustic concepts.
+    Cells annotated with score value; significant cells marked with '*'.
+    Memory: plt.close() called after save (T-03-07).
+
+    Args:
+        score_matrix: (n_systems, n_concepts) array of mean TCAV scores
+        system_names: list of system IDs (rows)
+        concept_names: list of concept names (columns)
+        significance_mask: (n_systems, n_concepts) bool array -- True = significant
+        output_path: file path to save PNG
+        title: figure title
+    """
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import seaborn as sns
+        _has_seaborn = True
+    except ImportError:
+        _has_seaborn = False
+
+    fig, ax = plt.subplots(figsize=(len(concept_names) * 1.8, max(len(system_names) * 0.8, 4)))
+    annot = np.empty_like(score_matrix, dtype=object)
+    for i in range(score_matrix.shape[0]):
+        for j in range(score_matrix.shape[1]):
+            val = f'{score_matrix[i, j]:.2f}'
+            annot[i, j] = f'{val}*' if significance_mask[i, j] else val
+
+    if _has_seaborn:
+        sns.heatmap(score_matrix, annot=annot, fmt='',
+                    vmin=0.3, vmax=0.9, cmap='YlOrRd',
+                    xticklabels=concept_names, yticklabels=system_names,
+                    ax=ax, linewidths=0.5,
+                    cbar_kws={'label': 'TCAV Score (spoof class)'})
+    else:
+        im = ax.imshow(score_matrix, vmin=0.3, vmax=0.9, cmap='YlOrRd', aspect='auto')
+        ax.set_xticks(range(len(concept_names)))
+        ax.set_xticklabels(concept_names, rotation=45, ha='right')
+        ax.set_yticks(range(len(system_names)))
+        ax.set_yticklabels(system_names)
+        for i in range(score_matrix.shape[0]):
+            for j in range(score_matrix.shape[1]):
+                ax.text(j, i, annot[i, j], ha='center', va='center', fontsize=9)
+        plt.colorbar(im, ax=ax, label='TCAV Score (spoof class)')
+
+    ax.set_title(title)
+    ax.set_xlabel('Acoustic Concept')
+    ax.set_ylabel('Synthesis System')
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()  # memory cleanup (T-03-07)
+
+
+def plot_transferability(score_matrix, system_names, concept_names, output_path):
+    """
+    Hierarchically clustered heatmap showing system-concept transferability.
+
+    Rows = synthesis systems, columns = acoustic concepts.
+    Ward linkage hierarchical clustering groups similar systems and concepts.
+    Memory: plt.close() called after save (T-03-07).
+
+    Args:
+        score_matrix: (n_systems, n_concepts) array of mean TCAV scores
+        system_names: list of system IDs (rows)
+        concept_names: list of concept names (columns)
+        output_path: file path to save PNG
+    """
+    import pandas as pd
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import seaborn as sns
+        df = pd.DataFrame(score_matrix, index=system_names, columns=concept_names)
+        g = sns.clustermap(df, method='ward', cmap='YlOrRd',
+                           annot=True, fmt='.2f', vmin=0.3, vmax=0.9,
+                           figsize=(len(concept_names) * 2, len(system_names) * 1.2),
+                           linewidths=0.5,
+                           cbar_kws={'label': 'Mean TCAV Score'},
+                           dendrogram_ratio=(0.15, 0.15))
+        g.fig.suptitle('Concept Transferability: System-Concept Clustering', y=1.02)
+        g.savefig(output_path, dpi=150, bbox_inches='tight')
+    except ImportError:
+        # Fallback: plain heatmap if seaborn unavailable
+        fig, ax = plt.subplots(figsize=(len(concept_names) * 2, len(system_names) * 1.2))
+        im = ax.imshow(score_matrix, vmin=0.3, vmax=0.9, cmap='YlOrRd', aspect='auto')
+        ax.set_xticks(range(len(concept_names)))
+        ax.set_xticklabels(concept_names, rotation=45, ha='right')
+        ax.set_yticks(range(len(system_names)))
+        ax.set_yticklabels(system_names)
+        ax.set_title('Concept Transferability: System-Concept Mean TCAV Scores')
+        plt.colorbar(im, ax=ax, label='Mean TCAV Score')
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()  # memory cleanup (T-03-07)

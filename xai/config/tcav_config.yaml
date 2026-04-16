@@ -3,9 +3,9 @@ model:
   weights: /home/SpeakerRec/BioVoice/xai/pre_trained_DF_RawNet2.pth
 
 data:
-  tar_dir_train: /home/SpeakerRec/BioVoice/data/ASVspoof5/flac_T
-  tar_dir_dev: /home/SpeakerRec/BioVoice/data/ASVspoof5/flac_D
-  dev_protocol: /home/SpeakerRec/BioVoice/data/ASVspoof5/ASVspoof5_protocols/ASVspoof5.dev.track_1.tsv
+  tar_dir_train: /home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_audio_train_tars
+  tar_dir_dev: /home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_audio_dev_tars
+  dev_protocol: /home/SpeakerRec/BioVoice/data/datasets/ASVspoof5_tars/ASVspoof5_protocols/ASVspoof5.dev.track_1.tsv
   features_csv: data/features/bonafide_features.csv
 
 concepts:

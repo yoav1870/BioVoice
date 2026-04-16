@@ -102,10 +102,6 @@ def compute_tcav_score(model: torch.nn.Module, inputs: torch.Tensor,
             grad_pooled = grad.detach().cpu().numpy()
         else:
             grad_pooled = grad_flat
-        elif grad.dim() == 2:
-            grad_pooled = grad.detach().cpu().numpy()  # already (batch, D)
-        else:
-            grad_pooled = grad_flat
 
         deriv = grad_pooled @ cav  # (batch,) directional derivative per example
         derivs.extend(deriv.tolist())

@@ -129,3 +129,113 @@ def synthetic_per_system_scores():
                     'pval': float(rng.uniform(0.001, 0.5)),
                 }
     return {'systems': systems, 'concepts': concepts, 'layers': layers, 'scores': scores}
+
+
+# ========================================================================
+# Phase 5 (SHAP baseline) fixtures -- append-only, do NOT modify fixtures
+# above this block (they are used by Phase 1-4 tests).
+# ========================================================================
+import yaml  # noqa: E402 (appended after existing imports)
+
+
+@pytest.fixture
+def synthetic_acoustic_features():
+    """Deterministic (X, y) for classifier + SHAP tests.
+
+    Two linearly separable Gaussians in 64-dim feature space; 80% class 0 / 20%
+    class 1 to mimic ASVspoof5-like imbalance. Seeded for determinism across
+    numpy versions (np.random.RandomState, NOT np.random.seed -- 02-02-SUMMARY pattern).
+    """
+    rng = np.random.RandomState(42)
+    n_features = 64
+    n_0, n_1 = 400, 100
+    mu_0 = np.zeros(n_features)
+    mu_1 = np.zeros(n_features); mu_1[:5] = 2.0
+    X_0 = rng.multivariate_normal(mu_0, np.eye(n_features), size=n_0)
+    X_1 = rng.multivariate_normal(mu_1, np.eye(n_features), size=n_1)
+    X = np.vstack([X_0, X_1])
+    y = np.array([0] * n_0 + [1] * n_1)
+    names = [f'feat_{i}' for i in range(n_features)]
+    return {'X': X, 'y': y, 'feature_names': names}
+
+
+@pytest.fixture
+def fake_shap_config(tmp_path):
+    """Minimal shap_config-shaped dict + yaml file for cache tests."""
+    cfg = {
+        'features': {
+            'sample_rate': 16000, 'n_mfcc': 13, 'include_mfcc_deltas': True,
+            'f0_min': 75, 'f0_max': 500, 'pause_rate_threshold_ratio': 0.1,
+        },
+        'classifier': {
+            'test_size': 0.2,
+            'rf': {'n_estimators': 200, 'class_weight': 'balanced'},
+            'svm': {'kernel': 'rbf', 'class_weight': 'balanced', 'probability': True},
+            'seed': 42,
+        },
+        'shap': {'n_background': 10, 'n_eval': 50, 'nsamples': 100, 'target_class': 1},
+        'concept_to_features': {
+            'breathiness':         ['HNR_mean', 'HNR_var'],
+            'pitch_monotony':      ['F0_std', 'F0_mean'],
+            'spectral_smoothness': ['spectral_flux_var', 'spectral_centroid_var'],
+            'temporal_regularity': ['energy_envelope_var', 'pause_rate'],
+        },
+        'comparison': {'rho_confirm': 0.7, 'rho_challenge': 0.3},
+    }
+    cfg_path = tmp_path / 'shap_config.yaml'
+    cfg_path.write_text(yaml.safe_dump(cfg))
+    return {'cfg': cfg, 'path': str(cfg_path)}
+
+
+@pytest.fixture
+def synthetic_tcav_results():
+    """Phase-4-shaped per_system_results.json stub (subset of keys) for compare.py tests."""
+    return {
+        'systems_analyzed':  ['A09', 'A10', 'A11', 'A12'],
+        'systems_excluded':  {},
+        'per_system_scores': {
+            'A09': {'breathiness': {'post_gru': {'mean_score': 0.82, 'significant': True}}},
+            'A10': {'breathiness': {'post_gru': {'mean_score': 0.75, 'significant': True}}},
+            'A11': {'breathiness': {'post_gru': {'mean_score': 0.55, 'significant': False}}},
+            'A12': {'breathiness': {'post_gru': {'mean_score': 0.88, 'significant': True}}},
+        },
+        'concept_signatures': {
+            'A09': {'significant_concepts': ['breathiness']},
+            'A10': {'significant_concepts': ['breathiness']},
+            'A11': {'significant_concepts': []},
+            'A12': {'significant_concepts': ['breathiness']},
+        },
+        'transferability': {
+            'breathiness': {
+                'classification': 'universal',
+                'n_significant_systems': 3,
+                'significant_systems': ['A09', 'A10', 'A12'],
+                'best_layer': 'post_gru',
+            }
+        },
+        'n_significant': 3,
+        'fdr_method':    'benjamini_hochberg',
+        'alpha':         0.05,
+        'n_tests_total': 160,
+    }
+
+
+@pytest.fixture
+def synthetic_shap_results():
+    """Full shap_results.json stub exercising every validate_shap gate (all-pass configuration)."""
+    return {
+        'classifier': {
+            'rf':  {'accuracy': 0.92, 'auc': 0.78, 'confusion_matrix': [[380, 20], [50, 50]]},
+            'svm': {'accuracy': 0.88, 'auc': 0.66, 'confusion_matrix': [[360, 40], [60, 40]]},
+            'best_classifier': 'rf',
+        },
+        'feature_importances':  [{'name': f'feat_{i}', 'mean_abs_shap': 0.1 - 0.001 * i}
+                                 for i in range(64)],
+        'top_15_features':      [[f'feat_{i}', 0.1 - 0.001 * i] for i in range(15)],
+        'per_concept_rho':      {'breathiness': {'rho': 0.82, 'pval': 0.01, 'n_mapped': 2}},
+        'overall_rho':          {'rho': 0.71, 'pval': 0.04},
+        'comparison_status':    'confirms',
+        'n_eval_used':          100,
+        'n_background':         50,
+        'feature_names':        [f'feat_{i}' for i in range(64)],
+    }

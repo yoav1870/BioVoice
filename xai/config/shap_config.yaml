@@ -1,0 +1,55 @@
+# xai/config/shap_config.yaml
+# Per-phase config for the SHAP baseline track.
+# Loaded with yaml.safe_load() exclusively (Phase 1 pattern T-03-02).
+
+model: {}   # SHAP baseline uses sklearn only -- no RawNet2 weights needed.
+
+data:
+  tar_dir_dev:    /home/SpeakerRec/BioVoice/data/ASVspoof5/flac_D
+  dev_protocol:   /home/SpeakerRec/BioVoice/data/ASVspoof5/ASVspoof5_protocols/ASVspoof5.dev.track_1.tsv
+  n_clips_total:  1000        # 500 bonafide + 500 spoof balanced subsample from dev partition
+  seed:           42
+
+features:
+  sample_rate:                16000
+  n_mfcc:                     13
+  include_mfcc_deltas:        true   # adds 13x2x2 = 52 MFCC features -> total >= 60 (SHAP-01)
+  f0_min:                     75
+  f0_max:                     500
+  pause_rate_threshold_ratio: 0.1
+
+classifier:
+  test_size:    0.2                  # stratified internal holdout from the 1000-clip subsample
+  rf:
+    n_estimators: 200
+    class_weight: balanced           # ASVspoof5 dev is ~95% spoof; without this the classifier is trivial
+  svm:
+    kernel:       rbf
+    class_weight: balanced
+    probability:  true               # REQUIRED so shap.KernelExplainer can call predict_proba
+  seed:         42
+
+shap:
+  n_background:  50                  # shap.kmeans(X_train, K=50) -- ~100x faster than full background
+  n_eval:        500                 # cap on KernelSHAP evaluation instances (Pitfall 1 in 05-RESEARCH.md)
+  nsamples:      auto                # 2*d + 2048 (~2176 for d=64)
+  target_class:  1                   # 1 = spoof class; feature importances are w.r.t. spoof predictions
+
+# D-01 (user-locked): pre-defined concept -> features mapping.
+# MUST remain exactly as CONTEXT.md specifies -- no post-hoc remapping.
+concept_to_features:
+  breathiness:          [HNR_mean, HNR_var]
+  pitch_monotony:       [F0_std, F0_mean]
+  spectral_smoothness:  [spectral_flux_var, spectral_centroid_var]
+  temporal_regularity:  [energy_envelope_var, pause_rate]
+
+# D-02 / D-03 (user-locked): Spearman rho thresholds for SHAP <-> TCAV comparison.
+comparison:
+  rho_confirm:   0.7                 # rho > 0.7 -> comparison_status = confirms
+  rho_challenge: 0.3                 # rho < 0.3 -> comparison_status = challenged
+  # 0.3 <= rho <= 0.7 -> inconclusive
+  # D-03 behaviour: if rho < rho_challenge -> report + continue (do NOT abort).
+
+paths:
+  tcav_results:  results/per_system/scores/per_system_results.json   # Phase 4 output (read-only input)
+  output_dir:    results/shap                                        # gitignored, created at runtime

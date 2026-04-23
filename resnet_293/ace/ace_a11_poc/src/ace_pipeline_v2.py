@@ -327,6 +327,8 @@ def _collect_regions_for_class(
     shared_speakers: list[str],
     layer_name: str,
 ) -> list[RegionItem]:
+    model_device = next(model.parameters()).device
+
     if target_class == "spoof":
         work_cfg = replace(
             tcav_cfg,
@@ -363,9 +365,10 @@ def _collect_regions_for_class(
     for i, row in rows.iterrows():
         utt_id = str(row["utt_id"])
         speaker_id = str(row["speaker_id"])
-        x = load_input(work_cfg, model, [utt_id], tar_index)  # (1,T,F)
+        x = load_input(work_cfg, model, [utt_id], tar_index)  # (1,T,F) on CPU
         fbank_tf = x.squeeze(0).detach().cpu().numpy().astype(np.float32)
-        hm_ft = _compute_gradcam_ft(model=model, target_layer=target_layer, x_btf=x, out_size=(80, 200))
+        x_dev = x.to(model_device)
+        hm_ft = _compute_gradcam_ft(model=model, target_layer=target_layer, x_btf=x_dev, out_size=(80, 200))
         regs = _extract_regions_from_one_utt(cfg, fbank_tf=fbank_tf, hm_ft=hm_ft)
 
         for t0, t1, f0, f1, sc, patch_tf in regs:

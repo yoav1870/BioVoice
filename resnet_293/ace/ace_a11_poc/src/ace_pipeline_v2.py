@@ -66,7 +66,8 @@ def _compute_gradcam_ft(
     out_size: tuple[int, int] = (80, 200),
 ) -> np.ndarray:
     gradcam = LayerGradCam(model, target_layer)
-    x = x_btf.detach().clone().requires_grad_(True)
+    model_device = next(model.parameters()).device
+    x = x_btf.to(model_device).detach().clone().requires_grad_(True)
     at = gradcam.attribute(x, target=0)  # spoof logit
     hm = (
         F.interpolate(

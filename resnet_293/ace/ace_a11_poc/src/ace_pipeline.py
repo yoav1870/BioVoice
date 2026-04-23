@@ -222,7 +222,12 @@ def _embed_patch_items(
         full_tf = _pad_patch_to_full_mels(it.arr_tf, it.f0, it.f1, full_f=80)  # (T,80)
         full_batch.append(full_tf)
         if len(full_batch) == batch_size or i == len(items) - 1:
-            arr = np.stack(full_batch, axis=0).astype(np.float32)
+            # Patch sizes differ in time axis (e.g., 24/40/64), so pad to max T in this batch.
+            max_t = max(x.shape[0] for x in full_batch)
+            arr = np.zeros((len(full_batch), max_t, 80), dtype=np.float32)
+            for bi, x in enumerate(full_batch):
+                t = x.shape[0]
+                arr[bi, :t, :] = x
             emb = embedder.embed_batch(arr)
             embeds.append(emb)
             full_batch = []
@@ -323,7 +328,14 @@ def _save_cluster_concepts(
             )
 
         if save_patch_previews and len(keep) > 0:
-            preview = np.stack([spoof_items[int(pi)].arr_tf.T for pi in keep[:16]], axis=0).astype(np.float32)
+            # Mixed patch sizes in one cluster; pad previews to common (F,T) before stacking.
+            preview_items = [spoof_items[int(pi)].arr_tf.T.astype(np.float32) for pi in keep[:16]]  # (F,T)
+            max_f = max(x.shape[0] for x in preview_items)
+            max_t = max(x.shape[1] for x in preview_items)
+            preview = np.zeros((len(preview_items), max_f, max_t), dtype=np.float32)
+            for pi, x in enumerate(preview_items):
+                f, t = x.shape
+                preview[pi, :f, :t] = x
             np.save(cdir / "_preview_stack.npy", preview)
 
         with (cdir / "meta.json").open("w", encoding="utf-8") as f:
@@ -346,7 +358,7 @@ def run_ace_poc(config_path: Path) -> dict[str, Any]:
 
     tcav_cfg = load_config()
     validate_config(tcav_cfg)
-    tcav_cfg.split_name = str(cfg["split_name"])
+    tcav_cfg = replace(tcav_cfg, split_name=str(cfg["split_name"]))
 
     system_id = str(cfg["system_id"])
     layer_name = str(cfg["layer_name"])

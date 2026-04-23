@@ -1,0 +1,44 @@
+seed: 1337
+
+system_id: "A11"
+layer_name: "layer3"
+split_name: "test"
+
+# Discovery sets
+subset_num_speakers_spoof: 8
+subset_utts_per_speaker_spoof: 8
+subset_min_utts_per_speaker_spoof: 8
+
+subset_num_speakers_bonafide: 8
+subset_utts_per_speaker_bonafide: 8
+subset_min_utts_per_speaker_bonafide: 8
+
+# Grad-CAM guided proposal extraction
+gradcam_quantiles: [0.9, 0.95]
+component_min_area: 30
+component_min_t: 8
+component_min_f: 6
+bbox_pad_t: 2
+bbox_pad_f: 2
+max_regions_per_utt: 40
+max_total_regions_per_class: 12000
+dedup_iou_threshold: 0.8
+
+# Patch preprocessing
+normalize_patch_zscore: true
+apply_heat_weighting: true
+
+# Cluster by size scale (area ratio wrt 200x80)
+area_scales:
+  - { name: "small", min_ratio: 0.0, max_ratio: 0.02 }
+  - { name: "medium", min_ratio: 0.02, max_ratio: 0.06 }
+  - { name: "large", min_ratio: 0.06, max_ratio: 1.0 }
+
+k_candidates: [8, 12, 16, 20]
+min_cluster_size: 30
+
+# Concept export
+top_examples_per_cluster: 96
+save_patch_previews: true
+
+output_subdir: "a11_ace_v2_run1"

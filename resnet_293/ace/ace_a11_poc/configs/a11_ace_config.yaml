@@ -1,0 +1,36 @@
+seed: 1337
+
+system_id: "A11"
+layer_name: "layer3"
+
+split_name: "test"
+
+# Discovery sets
+subset_num_speakers_spoof: 8
+subset_utts_per_speaker_spoof: 8
+subset_min_utts_per_speaker_spoof: 8
+
+subset_num_speakers_bonafide: 8
+subset_utts_per_speaker_bonafide: 8
+subset_min_utts_per_speaker_bonafide: 8
+
+# Patch extraction in (T,F) fbank space
+patch_sizes:
+  - [24, 16]   # time, mel
+  - [40, 24]
+  - [64, 32]
+patch_stride_t: 12
+patch_stride_f: 8
+max_patches_per_utt: 80
+max_total_patches_per_class: 12000
+
+# Auto-K selection
+k_candidates: [20, 30, 40, 60]
+min_cluster_size: 40
+
+# Concept export
+top_examples_per_cluster: 64
+save_patch_previews: true
+
+# Output
+output_subdir: "a11_ace_poc_run1"

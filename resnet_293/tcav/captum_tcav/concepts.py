@@ -30,6 +30,11 @@ def infer_target_frames(concept_root: Path, concept_names: list[str]) -> int:
     return int(cast(npt.NDArray[np.generic], np.load(first_concept_path)).shape[1])
 
 
+def infer_target_mels(concept_root: Path, concept_names: list[str]) -> int:
+    first_concept_path = concept_npy_paths(concept_root, concept_names[0])[0]
+    return int(cast(npt.NDArray[np.generic], np.load(first_concept_path)).shape[0])
+
+
 def normalize_frames(tensor: torch.Tensor, target_frames: int) -> torch.Tensor:
     """Adjust the last dimension of *tensor* to exactly *target_frames*."""
     current_frames = int(tensor.shape[-1])
@@ -43,6 +48,21 @@ def normalize_frames(tensor: torch.Tensor, target_frames: int) -> torch.Tensor:
     left = pad // 2
     right = pad - left
     return F.pad(tensor, (left, right), mode="constant", value=0.0)
+
+
+def normalize_mels(tensor: torch.Tensor, target_mels: int) -> torch.Tensor:
+    """Adjust first dimension (mel bins) of (F,T) tensor to *target_mels*."""
+    current_mels = int(tensor.shape[0])
+    if current_mels == target_mels:
+        return tensor
+    if current_mels > target_mels:
+        start = (current_mels - target_mels) // 2
+        return tensor[start : start + target_mels, ...]
+
+    pad = target_mels - current_mels
+    top = pad // 2
+    bottom = pad - top
+    return F.pad(tensor, (0, 0, top, bottom), mode="constant", value=0.0)
 
 
 def ensure_random_concept(
@@ -98,9 +118,11 @@ def make_iter(
     )
 
     target_frames = infer_target_frames(concept_root, concept_names)
+    target_mels = infer_target_mels(concept_root, concept_names)
 
     def loader(filename: str) -> torch.Tensor:
         tensor = load_npy_as_tensor(filename)       # (F, T)
+        tensor = normalize_mels(tensor, target_mels)      # adjust F
         tensor = normalize_frames(tensor, target_frames)  # adjust T (last dim)
         tensor = tensor.permute(1, 0)               # (T, F) -- model input format
         return tensor

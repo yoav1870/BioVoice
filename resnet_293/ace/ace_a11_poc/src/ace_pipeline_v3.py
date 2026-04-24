@@ -275,6 +275,9 @@ def _save_cluster_concepts_v3(
     score_df: pd.DataFrame,
     top_examples_per_cluster: int,
     save_patch_previews: bool,
+    export_full_canvas_ft: bool,
+    export_target_mels: int,
+    export_target_frames: int,
 ) -> None:
     concepts_dir = out_dir / "concepts_auto"
     concepts_dir.mkdir(parents=True, exist_ok=True)
@@ -291,8 +294,23 @@ def _save_cluster_concepts_v3(
         meta_rows: list[dict[str, Any]] = []
         for j, ii in enumerate(keep):
             it = spoof_items[int(ii)]
-            arr_ft = it.arr_tf.T.astype(np.float32)
-            mask_ft = it.mask_tf.T.astype(np.float32)
+            if export_full_canvas_ft:
+                full_tf = np.zeros((int(export_target_frames), int(export_target_mels)), dtype=np.float32)
+                full_mask_tf = np.zeros((int(export_target_frames), int(export_target_mels)), dtype=np.float32)
+                t0 = max(0, int(it.t0))
+                t1 = min(int(export_target_frames), int(it.t1))
+                f0 = max(0, int(it.f0))
+                f1 = min(int(export_target_mels), int(it.f1))
+                if t1 > t0 and f1 > f0:
+                    src_t = t1 - t0
+                    src_f = f1 - f0
+                    full_tf[t0:t1, f0:f1] = it.arr_tf[:src_t, :src_f]
+                    full_mask_tf[t0:t1, f0:f1] = it.mask_tf[:src_t, :src_f]
+                arr_ft = full_tf.T
+                mask_ft = full_mask_tf.T
+            else:
+                arr_ft = it.arr_tf.T.astype(np.float32)
+                mask_ft = it.mask_tf.T.astype(np.float32)
             np.save(cdir / f"{j:06d}.npy", arr_ft)
             np.save(masks_dir / f"{j:06d}_mask.npy", mask_ft)
             meta_rows.append(
@@ -311,8 +329,28 @@ def _save_cluster_concepts_v3(
             )
 
         if save_patch_previews and len(keep) > 0:
-            patch_preview = [spoof_items[int(ii)].arr_tf.T.astype(np.float32) for ii in keep[:16]]
-            mask_preview = [spoof_items[int(ii)].mask_tf.T.astype(np.float32) for ii in keep[:16]]
+            patch_preview: list[np.ndarray] = []
+            mask_preview: list[np.ndarray] = []
+            for ii in keep[:16]:
+                it = spoof_items[int(ii)]
+                if export_full_canvas_ft:
+                    full_tf = np.zeros((int(export_target_frames), int(export_target_mels)), dtype=np.float32)
+                    full_mask_tf = np.zeros((int(export_target_frames), int(export_target_mels)), dtype=np.float32)
+                    t0 = max(0, int(it.t0))
+                    t1 = min(int(export_target_frames), int(it.t1))
+                    f0 = max(0, int(it.f0))
+                    f1 = min(int(export_target_mels), int(it.f1))
+                    if t1 > t0 and f1 > f0:
+                        src_t = t1 - t0
+                        src_f = f1 - f0
+                        full_tf[t0:t1, f0:f1] = it.arr_tf[:src_t, :src_f]
+                        full_mask_tf[t0:t1, f0:f1] = it.mask_tf[:src_t, :src_f]
+                    patch_preview.append(full_tf.T.astype(np.float32))
+                    mask_preview.append(full_mask_tf.T.astype(np.float32))
+                else:
+                    patch_preview.append(it.arr_tf.T.astype(np.float32))
+                    mask_preview.append(it.mask_tf.T.astype(np.float32))
+
             max_f = max(x.shape[0] for x in patch_preview)
             max_t = max(x.shape[1] for x in patch_preview)
             pstack = np.zeros((len(patch_preview), max_f, max_t), dtype=np.float32)
@@ -412,6 +450,9 @@ def run_ace_v3(config_path: Path) -> dict[str, Any]:
         score_df=score_df,
         top_examples_per_cluster=int(cfg["top_examples_per_cluster"]),
         save_patch_previews=bool(cfg["save_patch_previews"]),
+        export_full_canvas_ft=bool(cfg.get("export_full_canvas_ft", True)),
+        export_target_mels=int(cfg.get("export_target_mels", 80)),
+        export_target_frames=int(cfg.get("export_target_frames", 200)),
     )
 
     meta = {

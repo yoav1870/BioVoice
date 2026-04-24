@@ -44,5 +44,8 @@ min_cluster_size: 30
 # Concept export
 top_examples_per_cluster: 96
 save_patch_previews: true
+export_full_canvas_ft: true
+export_target_mels: 80
+export_target_frames: 200
 
 output_subdir: "a11_ace_v3_run1"
